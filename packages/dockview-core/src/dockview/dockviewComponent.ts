@@ -2555,10 +2555,13 @@ export class DockviewComponent
 
     /**
      * Teardown for a popout window's `popoutWindowDisposable`. Runs when the
-     * window closes (by user, by `removeGroup`, or by component disposal):
-     * relocates every member group back to the main grid (or to a floating
-     * window when the anchor came from one), then disposes the nested gridview.
-     * `closeResult.returnedGroup` is read by the entry's `dispose()` contract.
+     * window closes (by user, by `removeGroup` / `moveGroup`, or by component
+     * disposal). On a genuine close it relocates every member group back to
+     * the main grid (or to a floating window when the anchor came from one),
+     * then disposes the nested gridview. On an explicit removal it only hands
+     * the anchor back and disposes the nested gridview: the remover places the
+     * group itself. `closeResult.returnedGroup` is read by the entry's
+     * `dispose()` contract.
      */
     private disposePopoutWindow(params: {
         group: DockviewGroupPanel;
@@ -2586,11 +2589,12 @@ export class DockviewComponent
             return;
         }
 
-        // Distinguish a genuine window close from an explicit `removeGroup`:
-        // the explicit-removal paths remove the service entry *before* this
-        // disposable runs. Key off the stable `popoutGridview` rather than the
-        // captured `group`, which may no longer be the window's anchor (it can
-        // have been dragged out, promoting another member to anchor).
+        // Distinguish a genuine window close from an explicit `removeGroup` /
+        // `moveGroup`: the explicit-removal paths remove the service entry
+        // *before* this disposable runs. Key off the stable `popoutGridview`
+        // rather than the captured `group`, which may no longer be the window's
+        // anchor (it can have been dragged out, promoting another member to
+        // anchor).
         const genuineClose = !!this._popoutWindowService?.entries.find(
             (entry) => entry.gridview === popoutGridview
         );
@@ -2603,6 +2607,21 @@ export class DockviewComponent
         const anchorPresent = members.includes(group);
         const anchorIsSoleMember = anchorPresent && members.length === 1;
 
+        if (!genuineClose) {
+            // An explicit `removeGroup` / `moveGroup` owns the group's
+            // placement: hand the anchor back on the main containers and tear
+            // down only the window-local gridview. The service entry is
+            // already gone, so `doRemoveGroup` could not resolve it here.
+            if (anchorPresent && this.getPanel(group.id)) {
+                group.model.renderContainer = this.overlayRenderContainer;
+                group.model.dropTargetContainer = this.rootDropTargetContainer;
+                closeResult.returnedGroup = group;
+            }
+
+            disposePopoutGridview();
+            return;
+        }
+
         /**
          * Popping a group out fires `onDidMovePanel` per panel, so closing the
          * window owes the caller the same: every panel in it is rehomed, into
@@ -2614,30 +2633,27 @@ export class DockviewComponent
          */
         const movedPanels: MovedPanel[] = [];
 
-        // On a genuine close, relocate every member that ISN'T the captured
-        // anchor back to the main grid. The captured anchor (if still here) gets
-        // the reference-return / re-float treatment below. Explicit removal
-        // relocates via its own path, so the loop is skipped for it.
-        if (genuineClose) {
-            for (const member of members) {
-                if (member === group) {
-                    continue;
-                }
-                this.movingLock(() => {
-                    this.doRemoveGroup(member, {
-                        skipDispose: true,
-                        skipActive: true,
-                        skipPopoutReturn: true,
-                    });
-                    this.redockGroupToMainGrid(member);
+        // Relocate every member that ISN'T the captured anchor back to the main
+        // grid. The captured anchor (if still here) gets the reference-return /
+        // re-float treatment below.
+        for (const member of members) {
+            if (member === group) {
+                continue;
+            }
+            this.movingLock(() => {
+                this.doRemoveGroup(member, {
+                    skipDispose: true,
+                    skipActive: true,
+                    skipPopoutReturn: true,
                 });
+                this.redockGroupToMainGrid(member);
+            });
 
-                // the group is relocated intact and keeps its panels, so `to`
-                // equals `from`, matching how a group dragged to a new grid
-                // slot reports
-                for (const panel of member.panels) {
-                    movedPanels.push({ panel, from: member });
-                }
+            // the group is relocated intact and keeps its panels, so `to`
+            // equals `from`, matching how a group dragged to a new grid
+            // slot reports
+            for (const panel of member.panels) {
+                movedPanels.push({ panel, from: member });
             }
         }
 
@@ -2674,16 +2690,6 @@ export class DockviewComponent
             group.model.renderContainer = this.overlayRenderContainer;
             group.model.dropTargetContainer = this.rootDropTargetContainer;
             closeResult.returnedGroup = group;
-
-            if (!genuineClose) {
-                /**
-                 * If this popout group was explicitly removed then we shouldn't run the additional
-                 * steps. The explicit remover re-docks the returned group itself; here we only hand
-                 * it back (above) and tear down the nested gridview.
-                 */
-                disposePopoutGridview();
-                return;
-            }
 
             // Re-float only restores the pre-popout state of a SINGLE popped-out
             // group. A multi-group window must not be split (anchor re-floats
