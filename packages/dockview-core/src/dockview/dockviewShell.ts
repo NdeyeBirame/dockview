@@ -7,6 +7,7 @@ import {
     Splitview,
 } from '../splitview/splitview';
 import { isInDocument, watchElementResize } from '../dom';
+import { DockviewHeaderPosition } from './options';
 
 export type EdgeGroupPosition = 'top' | 'bottom' | 'left' | 'right';
 
@@ -93,6 +94,7 @@ export interface SerializedEdgeGroups {
  */
 export interface IEdgeGroupHost {
     readonly element: HTMLElement;
+    readonly headerPosition: DockviewHeaderPosition;
     layout(width: number, height: number): void;
 }
 
@@ -240,6 +242,14 @@ export class EdgeGroupView implements IView {
         }
         this._tabSizeDisposables.addDisposables(
             watchElementResize(strip, () => {
+                // a strip moved across the edge (e.g. a pinned group's bottom
+                // tabs) spans the whole group, so its size is meaningless here
+                const { headerPosition } = this._group;
+                const stripIsVertical =
+                    headerPosition === 'left' || headerPosition === 'right';
+                if (stripIsVertical !== (this._orientation === 'horizontal')) {
+                    return;
+                }
                 this._applyMeasuredTabSize(
                     this._orientation === 'vertical'
                         ? strip.offsetHeight

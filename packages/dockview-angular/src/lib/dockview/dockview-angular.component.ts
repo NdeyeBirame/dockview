@@ -115,8 +115,10 @@ export class DockviewAngularComponent implements OnInit, OnDestroy, OnChanges {
     @Input() disableDnd?: boolean;
     @Input() dndStrategy?: DockviewDndStrategy;
     @Input() dndEdges?: false | DroptargetOverlayModel;
+    @Input() dropSizing?: DockviewOptions['dropSizing'];
     @Input() noPanelsOverlay?: 'emptyGroup' | 'watermark';
     @Input() closeEmptyGroups?: boolean;
+    @Input() groupIdGenerator?: () => string;
     @Input() getTabContextMenuItems?: (
         params: GetTabContextMenuItemsParams
     ) => (ContextMenuItem | { component: Type<any> | TemplateRef<any> })[];
