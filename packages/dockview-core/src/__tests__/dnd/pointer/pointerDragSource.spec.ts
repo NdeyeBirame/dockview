@@ -285,4 +285,93 @@ describe('PointerDragSource', () => {
 
         source.dispose();
     });
+
+    test('onDragStart can veto the drag with preventDefault', () => {
+        const element = document.createElement('div');
+        document.body.appendChild(element);
+
+        const getData = jest.fn<IDisposable, []>(() => ({
+            dispose: jest.fn(),
+        }));
+        const createGhost = jest.fn(() => undefined);
+        const onDragEnd = jest.fn();
+        const source = new PointerDragSource(element, {
+            getData,
+            createGhost,
+            onDragEnd,
+            touchOnly: false,
+            onDragStart: (event) => {
+                event.preventDefault();
+            },
+        });
+
+        fireEvent.pointerDown(
+            element,
+            pointerEventInit({ pointerType: 'mouse' })
+        );
+        fireEvent.pointerMove(
+            window,
+            pointerEventInit({ pointerType: 'mouse', clientX: 10 })
+        );
+
+        // No drag session: nothing published, no ghost, controller idle.
+        expect(getData).not.toHaveBeenCalled();
+        expect(createGhost).not.toHaveBeenCalled();
+        expect(PointerDragController.getInstance().active).toBeUndefined();
+
+        // The gesture is fully dismissed: further movement and release do
+        // nothing.
+        fireEvent.pointerMove(
+            window,
+            pointerEventInit({ pointerType: 'mouse', clientX: 40 })
+        );
+        fireEvent.pointerUp(
+            window,
+            pointerEventInit({ pointerType: 'mouse', clientX: 40 })
+        );
+        expect(getData).not.toHaveBeenCalled();
+        expect(PointerDragController.getInstance().active).toBeUndefined();
+        expect(onDragEnd).not.toHaveBeenCalled();
+
+        source.dispose();
+        element.remove();
+    });
+
+    test('a pointerdown already defaultPrevented before the hook is not a veto', () => {
+        const element = document.createElement('div');
+        const child = document.createElement('button');
+        element.appendChild(child);
+        document.body.appendChild(element);
+
+        // e.g. a close button that calls preventDefault on pointerdown to
+        // avoid stealing focus; the event bubbles to the drag source already
+        // cancelled.
+        child.addEventListener('pointerdown', (e) => e.preventDefault());
+
+        const getData = jest.fn<IDisposable, []>(() => ({
+            dispose: jest.fn(),
+        }));
+        const onDragStart = jest.fn();
+        const source = new PointerDragSource(element, {
+            getData,
+            onDragStart,
+            touchOnly: false,
+        });
+
+        fireEvent.pointerDown(
+            child,
+            pointerEventInit({ pointerType: 'mouse' })
+        );
+        fireEvent.pointerMove(
+            window,
+            pointerEventInit({ pointerType: 'mouse', clientX: 10 })
+        );
+
+        expect(onDragStart).toHaveBeenCalledTimes(1);
+        expect(getData).toHaveBeenCalledTimes(1);
+        expect(PointerDragController.getInstance().active).toBeDefined();
+
+        source.dispose();
+        element.remove();
+    });
 });

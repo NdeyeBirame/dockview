@@ -949,7 +949,15 @@ export class Tabs extends CompositeDisposable implements ITabReorderHost {
 
         const disposable = new CompositeDisposable(
             tab.onDragStart((event) => {
+                const wasPrevented = event.defaultPrevented;
                 this._onTabDragStart.fire({ nativeEvent: event, panel });
+
+                // `onWillDragPanel` vetoed the drag (see `PointerDragSource`
+                // for why only a flip during the hook counts). No drag end
+                // will follow, so arm nothing.
+                if (event.defaultPrevented && !wasPrevented) {
+                    return;
+                }
 
                 // Both HTML5 and pointer drags initialize _animState. Cleanup
                 // is wired in both paths: HTML5 via dragend/drop on _tabsList,
