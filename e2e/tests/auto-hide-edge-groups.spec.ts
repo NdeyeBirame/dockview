@@ -173,7 +173,6 @@ test.describe('auto-hide edge groups (peek)', () => {
         await expect(group).toHaveClass(/dv-edge-tool-window/);
 
         const width = async () => (await group.boundingBox())!.width;
-        // the shell sash sitting on the group's inner (right) edge
         const sashCentre = () =>
             page.evaluate(() => {
                 const g = document
@@ -204,13 +203,9 @@ test.describe('auto-hide edge groups (peek)', () => {
         const start = await width();
         expect(start).toBeGreaterThan(150);
 
-        // Repeated inward drags must never widen the group. The bug ratcheted
-        // the minimum up to the (bottom-docked) strip's full width + 50px, so
-        // each drag grew it by ~50px instead.
         let previous = start;
         for (let i = 0; i < 3; i++) {
             await dragSash(-30);
-            // let the strip's ResizeObserver report between drags
             await page.evaluate(
                 () => new Promise((r) => requestAnimationFrame(() => r(null)))
             );
@@ -220,7 +215,6 @@ test.describe('auto-hide edge groups (peek)', () => {
         }
         expect(previous).toBeLessThan(start - 30);
 
-        // Un-pinning collapses to the tab-strip width, not the pinned width.
         await page.locator('.dv-groupview-edge .dv-edge-peek-pin').click();
         await expect(group).not.toHaveClass(/dv-edge-tool-window/);
         await expect.poll(width).toBeLessThan(60);

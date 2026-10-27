@@ -296,8 +296,6 @@ describe('EdgeGroupView', () => {
         });
 
         describe('strip orientation (#1717)', () => {
-            // Drive the real ResizeObserver path: the strip measurement is only
-            // trusted while the strip runs along the edge.
             let observerCallbacks: Array<(entries: any[]) => void>;
             let originalResizeObserver: typeof window.ResizeObserver;
 
@@ -383,16 +381,13 @@ describe('EdgeGroupView', () => {
                 );
                 resizeStrip(strip, 40, 600);
 
-                // pin: tabs move to the bottom, the strip spans the group width
+                // pinned: tabs at the bottom
                 strip.classList.remove('dv-groupview-header-vertical');
                 resizeStrip(strip, 300, 35);
 
-                // the floor must not follow the group's own width, else every
-                // sash drag ratchets it up (#1717)
                 expect(view.collapsedSize).toBe(40);
                 expect(view.minimumSize).toBe(90);
 
-                // and a further resize while pinned still leaves it alone
                 resizeStrip(strip, 350, 35);
                 expect(view.minimumSize).toBe(90);
             });
@@ -411,7 +406,6 @@ describe('EdgeGroupView', () => {
                 view.setCollapsed(true);
                 expect(view.collapsedSize).toBe(40);
 
-                // tabs back on the edge
                 strip.classList.add('dv-groupview-header-vertical');
                 resizeStrip(strip, 42, 600);
                 expect(view.collapsedSize).toBe(42);
