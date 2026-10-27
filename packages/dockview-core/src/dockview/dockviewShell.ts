@@ -240,6 +240,18 @@ export class EdgeGroupView implements IView {
         }
         this._tabSizeDisposables.addDisposables(
             watchElementResize(strip, () => {
+                // Only a strip running along the edge (vertical tabs on a
+                // left/right edge, horizontal on top/bottom) has a cross size
+                // that means anything. A strip moved across the edge — as a
+                // pinned auto-hide group does with its tabs at the bottom —
+                // spans the whole group, and adopting that would ratchet the
+                // expanded minimum up on every resize.
+                const stripIsVertical = strip.classList.contains(
+                    'dv-groupview-header-vertical'
+                );
+                if (stripIsVertical !== (this._orientation === 'horizontal')) {
+                    return;
+                }
                 this._applyMeasuredTabSize(
                     this._orientation === 'vertical'
                         ? strip.offsetHeight
