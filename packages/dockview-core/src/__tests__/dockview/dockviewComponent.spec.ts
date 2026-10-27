@@ -798,6 +798,208 @@ describe('dockviewComponent', () => {
             expect(referenceGroupStillExists).toBe(false);
         });
 
+        /**
+         * Moving the last group out of a popout window disposes the window.
+         * `PopoutWindow.dispose()` used to dispose its close emitters before
+         * running `close()`, so `onDidClose` never fired and the per-window
+         * teardown bundle (nested gridview, render container, popup service,
+         * resize / focus subscriptions) hooked on it was never released.
+         */
+        test('moving the last group out of a popout window tears the window down', async () => {
+            window.open = () => setupMockWindow();
+
+            dockview = new DockviewComponent(container, {
+                createComponent(options) {
+                    switch (options.name) {
+                        case 'default':
+                            return new PanelContentPartTest(
+                                options.id,
+                                options.name
+                            );
+                        default:
+                            throw new Error(`unsupported`);
+                    }
+                },
+            });
+
+            dockview.layout(600, 1000);
+
+            const panel1 = dockview.addPanel({
+                id: 'panel1',
+                component: 'default',
+            });
+            const panel2 = dockview.addPanel({
+                id: 'panel2',
+                component: 'default',
+                position: { direction: 'right' },
+            });
+
+            // a lone panel takes its whole group along
+            await dockview.addPopoutGroup(panel1);
+            const popoutGroup = panel1.api.group;
+            expect(popoutGroup.api.location.type).toBe('popout');
+
+            const entry = (dockview as any)._popoutWindowService.entries[0];
+            const popoutWindow = entry.window;
+            const popoutGridviewElement: HTMLElement = entry.gridview.element;
+            expect(popoutGridviewElement.contains(popoutGroup.element)).toBe(
+                true
+            );
+            expect(popoutGroup.model.renderContainer).toBe(
+                entry.overlayRenderContainer
+            );
+
+            const gridviewDispose = jest.spyOn(entry.gridview, 'dispose');
+            const popupServiceDispose = jest.spyOn(
+                entry.popupService,
+                'dispose'
+            );
+            const overlayDispose = jest.spyOn(
+                entry.overlayRenderContainer,
+                'dispose'
+            );
+            const windowFocus = jest.fn();
+            (popoutWindow.window as Window).focus = windowFocus;
+
+            const willClose: Window[] = [];
+            dockview.onWillClosePopoutWindow((e) => willClose.push(e.window));
+            const removed: string[] = [];
+            dockview.onDidRemovePopoutGroup((e) => removed.push(e.id));
+
+            dockview.moveGroup({
+                from: { group: popoutGroup },
+                to: { group: panel2.api.group, position: 'left' },
+            });
+
+            // the group itself was placed in the grid, intact
+            expect(panel1.api.group).toBe(popoutGroup);
+            expect(panel1.api.location.type).toBe('grid');
+            expect(
+                dockview.gridview.element.contains(popoutGroup.element)
+            ).toBe(true);
+            expect(dockview.panels.map((p) => p.id).sort()).toEqual([
+                'panel1',
+                'panel2',
+            ]);
+
+            // the window and everything local to it were released
+            expect(dockview.getPopouts()).toEqual([]);
+            expect(removed).toEqual([popoutGroup.id]);
+            expect(willClose).toHaveLength(1);
+            expect(popoutWindow.isDisposed).toBe(true);
+            expect(popoutWindow.window).toBeNull();
+            expect(gridviewDispose).toHaveBeenCalledTimes(1);
+            expect(popupServiceDispose).toHaveBeenCalledTimes(1);
+            expect(overlayDispose).toHaveBeenCalledTimes(1);
+            expect(popoutGridviewElement.parentElement).toBeNull();
+            expect(popoutGridviewElement.contains(popoutGroup.element)).toBe(
+                false
+            );
+
+            // the group renders through the main window again
+            expect(popoutGroup.model.renderContainer).toBe(
+                dockview.overlayRenderContainer
+            );
+
+            // focus routing to the closed window was unsubscribed
+            panel2.api.setActive();
+            panel1.api.setActive();
+            expect(windowFocus).not.toHaveBeenCalled();
+        });
+
+        /**
+         * When one panel of a multi-panel group is popped out, the group it
+         * left stays visible as the popout's reference group. The window
+         * teardown used to rehome the popout group's panels into that
+         * reference group and remove the popout group on every path, which on
+         * an explicit move both lost the group being moved and threw
+         * (`failed to find popout group`: the move had already removed the
+         * service entry). An explicit remover owns the group's placement.
+         */
+        test('moving a popout group with a visible reference group out of its window keeps the group and its panel', async () => {
+            window.open = () => setupMockWindow();
+
+            dockview = new DockviewComponent(container, {
+                createComponent(options) {
+                    switch (options.name) {
+                        case 'default':
+                            return new PanelContentPartTest(
+                                options.id,
+                                options.name
+                            );
+                        default:
+                            throw new Error(`unsupported`);
+                    }
+                },
+            });
+
+            dockview.layout(600, 1000);
+
+            const panel1 = dockview.addPanel({
+                id: 'panel1',
+                component: 'default',
+            });
+            const panel2 = dockview.addPanel({
+                id: 'panel2',
+                component: 'default',
+            });
+            const panel3 = dockview.addPanel({
+                id: 'panel3',
+                component: 'default',
+                position: { direction: 'right' },
+            });
+
+            const referenceGroup = panel1.api.group;
+            expect(referenceGroup).toBe(panel2.api.group);
+
+            await dockview.addPopoutGroup(panel1);
+            const popoutGroup = panel1.api.group;
+            expect(popoutGroup).not.toBe(referenceGroup);
+            expect(popoutGroup.api.location.type).toBe('popout');
+            expect(referenceGroup.api.isVisible).toBe(true);
+            expect(referenceGroup.panels.map((p) => p.id)).toEqual(['panel2']);
+
+            const entry = (dockview as any)._popoutWindowService.entries[0];
+            const popoutWindow = entry.window;
+            const gridviewDispose = jest.spyOn(entry.gridview, 'dispose');
+
+            expect(() =>
+                dockview.moveGroup({
+                    from: { group: popoutGroup },
+                    to: { group: panel3.api.group, position: 'left' },
+                })
+            ).not.toThrow();
+
+            // the moved group is in the grid with its panel
+            expect(panel1.api.group).toBe(popoutGroup);
+            expect(popoutGroup.panels.map((p) => p.id)).toEqual(['panel1']);
+            expect(popoutGroup.api.location.type).toBe('grid');
+            expect(panel1.api.location.type).toBe('grid');
+            expect(
+                dockview.gridview.element.contains(popoutGroup.element)
+            ).toBe(true);
+
+            // nothing is left behind in a popout location
+            expect(
+                dockview.groups.filter((g) => g.api.location.type === 'popout')
+            ).toEqual([]);
+            expect(dockview.groups).toHaveLength(3);
+            expect(dockview.getPopouts()).toEqual([]);
+
+            // the reference group keeps its own panel
+            expect(referenceGroup.panels.map((p) => p.id)).toEqual(['panel2']);
+            expect(referenceGroup.api.isVisible).toBe(true);
+            expect(dockview.panels.map((p) => p.id).sort()).toEqual([
+                'panel1',
+                'panel2',
+                'panel3',
+            ]);
+
+            // and the window was torn down
+            expect(popoutWindow.isDisposed).toBe(true);
+            expect(gridviewDispose).toHaveBeenCalledTimes(1);
+        });
+
         test('a panel dropped on a group edge splits that group (#1612)', () => {
             // The drop overlay draws half of the group under the cursor, so
             // that is what the panel gets: the rest of the column is untouched.
