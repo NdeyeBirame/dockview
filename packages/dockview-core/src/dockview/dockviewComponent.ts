@@ -3364,11 +3364,14 @@ export class DockviewComponent
             }
             this._onDidAddGroup.fire(group);
 
-            this._shellManager!.addEdgeView(
-                position,
-                options,
-                group as IEdgeGroupHost
-            );
+            const host: IEdgeGroupHost = {
+                element: group.element,
+                get headerPosition() {
+                    return group.model.headerPosition;
+                },
+                layout: (width, height) => group.layout(width, height),
+            };
+            this._shellManager!.addEdgeView(position, options, host);
 
             return group.api;
         });

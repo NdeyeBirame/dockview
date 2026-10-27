@@ -4,10 +4,15 @@ import {
     IEdgeGroupHost,
     ShellManager,
 } from '../../dockview/dockviewShell';
+import { DockviewHeaderPosition } from '../../dockview/options';
 
-function makeGroup(): IEdgeGroupHost & { layout: jest.Mock } {
+function makeGroup(): IEdgeGroupHost & {
+    headerPosition: DockviewHeaderPosition;
+    layout: jest.Mock;
+} {
     return {
         element: document.createElement('div'),
+        headerPosition: 'top',
         layout: jest.fn(),
     };
 }
@@ -329,13 +334,13 @@ describe('EdgeGroupView', () => {
                 jest.restoreAllMocks();
             });
 
-            function makeGroupWithStrip(vertical: boolean) {
+            function makeGroupWithStrip(
+                headerPosition: DockviewHeaderPosition
+            ) {
                 const group = makeGroup();
+                group.headerPosition = headerPosition;
                 const strip = document.createElement('div');
                 strip.className = 'dv-tabs-and-actions-container';
-                if (vertical) {
-                    strip.classList.add('dv-groupview-header-vertical');
-                }
                 group.element.appendChild(strip);
                 return { group, strip };
             }
@@ -359,7 +364,7 @@ describe('EdgeGroupView', () => {
             }
 
             test('left/right edge: a vertical strip sets the collapsed size', () => {
-                const { group, strip } = makeGroupWithStrip(true);
+                const { group, strip } = makeGroupWithStrip('left');
                 const view = new EdgeGroupView(
                     { id: 'test', collapsedSize: 35 },
                     group,
@@ -373,7 +378,7 @@ describe('EdgeGroupView', () => {
             });
 
             test('left/right edge: a strip moved to the bottom (pinned) is ignored', () => {
-                const { group, strip } = makeGroupWithStrip(true);
+                const { group, strip } = makeGroupWithStrip('left');
                 const view = new EdgeGroupView(
                     { id: 'test', collapsedSize: 35 },
                     group,
@@ -382,7 +387,7 @@ describe('EdgeGroupView', () => {
                 resizeStrip(strip, 40, 600);
 
                 // pinned: tabs at the bottom
-                strip.classList.remove('dv-groupview-header-vertical');
+                group.headerPosition = 'bottom';
                 resizeStrip(strip, 300, 35);
 
                 expect(view.collapsedSize).toBe(40);
@@ -393,26 +398,26 @@ describe('EdgeGroupView', () => {
             });
 
             test('left/right edge: un-pinning collapses to the tab width, not the pinned width', () => {
-                const { group, strip } = makeGroupWithStrip(true);
+                const { group, strip } = makeGroupWithStrip('left');
                 const view = new EdgeGroupView(
                     { id: 'test', collapsedSize: 35 },
                     group,
                     'horizontal'
                 );
                 resizeStrip(strip, 40, 600);
-                strip.classList.remove('dv-groupview-header-vertical');
+                group.headerPosition = 'bottom';
                 resizeStrip(strip, 300, 35);
 
                 view.setCollapsed(true);
                 expect(view.collapsedSize).toBe(40);
 
-                strip.classList.add('dv-groupview-header-vertical');
+                group.headerPosition = 'left';
                 resizeStrip(strip, 42, 600);
                 expect(view.collapsedSize).toBe(42);
             });
 
             test('top/bottom edge: a horizontal strip sets the collapsed size', () => {
-                const { group, strip } = makeGroupWithStrip(false);
+                const { group, strip } = makeGroupWithStrip('top');
                 const view = new EdgeGroupView(
                     { id: 'test', collapsedSize: 35 },
                     group,
@@ -425,7 +430,7 @@ describe('EdgeGroupView', () => {
             });
 
             test('top/bottom edge: a vertical strip is ignored', () => {
-                const { group, strip } = makeGroupWithStrip(true);
+                const { group, strip } = makeGroupWithStrip('left');
                 const view = new EdgeGroupView(
                     { id: 'test', collapsedSize: 35 },
                     group,
