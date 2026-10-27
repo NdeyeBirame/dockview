@@ -148,12 +148,9 @@ export class PopoutWindow extends CompositeDisposable {
     }
 
     /**
-     * Closes the window first: `close()` fires `onWillClose` / `onDidClose`,
-     * and `super.dispose()` disposes those emitters, so the other order would
-     * close the window without telling anyone. The component releases
-     * everything local to a popout window from `onDidClose`, and reaches here
-     * when the last group is moved out of the window explicitly. An already
-     * closed window makes the close a no-op.
+     * Close before `super.dispose()` kills the close emitters, so an explicit
+     * dispose still fires `onWillClose` / `onDidClose` (the component's
+     * per-window teardown hangs off them). A closed window is a no-op.
      */
     override dispose(): void {
         this.close();

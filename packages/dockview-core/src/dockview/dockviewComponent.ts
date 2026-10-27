@@ -2608,16 +2608,10 @@ export class DockviewComponent
         const anchorIsSoleMember = anchorPresent && members.length === 1;
 
         if (!genuineClose) {
-            /**
-             * An explicit removal owns the group's placement. `removeGroup` has
-             * already emptied and discarded the group; `moveGroup`, taking the
-             * last group out of the window, relocates it intact and places it
-             * once this returns. So the group is neither rehomed into its
-             * reference group nor removed here (the service entry is already
-             * gone, so `doRemoveGroup` could not resolve the window anyway):
-             * it is handed back wired to the main containers, and only the
-             * window-local gridview is torn down.
-             */
+            // An explicit `removeGroup` / `moveGroup` owns the group's
+            // placement: hand the anchor back on the main containers and tear
+            // down only the window-local gridview. The service entry is
+            // already gone, so `doRemoveGroup` could not resolve it here.
             if (anchorPresent && this.getPanel(group.id)) {
                 group.model.renderContainer = this.overlayRenderContainer;
                 group.model.dropTargetContainer = this.rootDropTargetContainer;

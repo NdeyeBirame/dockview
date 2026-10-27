@@ -296,13 +296,8 @@ describe('PopoutWindow', () => {
         });
     });
 
-    /**
-     * `dispose()` is how the component tears a window down when the last
-     * group is moved out of it explicitly. Everything hanging off the window
-     * (the popout gridview, its render container, popup service, resize and
-     * focus subscriptions) is released from `onDidClose`, so a dispose that
-     * closed the window without firing it would leak all of that.
-     */
+    // The component's per-window teardown hangs off `onDidClose`, so an
+    // explicit `dispose()` must still fire the close events.
     describe('dispose()', () => {
         test('closes an open window, firing onWillClose and onDidClose once each, after which close() is a no-op', async () => {
             const { externalWindow, fireLoad } = makeFakeExternalWindow();

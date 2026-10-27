@@ -798,13 +798,8 @@ describe('dockviewComponent', () => {
             expect(referenceGroupStillExists).toBe(false);
         });
 
-        /**
-         * Moving the last group out of a popout window disposes the window.
-         * `PopoutWindow.dispose()` used to dispose its close emitters before
-         * running `close()`, so `onDidClose` never fired and the per-window
-         * teardown bundle (nested gridview, render container, popup service,
-         * resize / focus subscriptions) hooked on it was never released.
-         */
+        // `PopoutWindow.dispose()` used to kill its close emitters before
+        // `close()` ran, so the per-window teardown on `onDidClose` never ran.
         test('moving the last group out of a popout window tears the window down', async () => {
             window.open = () => setupMockWindow();
 
@@ -907,15 +902,8 @@ describe('dockviewComponent', () => {
             expect(windowFocus).not.toHaveBeenCalled();
         });
 
-        /**
-         * When one panel of a multi-panel group is popped out, the group it
-         * left stays visible as the popout's reference group. The window
-         * teardown used to rehome the popout group's panels into that
-         * reference group and remove the popout group on every path, which on
-         * an explicit move both lost the group being moved and threw
-         * (`failed to find popout group`: the move had already removed the
-         * service entry). An explicit remover owns the group's placement.
-         */
+        // With a visible reference group, the teardown used to rehome the
+        // moved group's panels into it and throw `failed to find popout group`.
         test('moving a popout group with a visible reference group out of its window keeps the group and its panel', async () => {
             window.open = () => setupMockWindow();
 
