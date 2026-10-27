@@ -14,6 +14,7 @@ import {
 import { SplitviewComponentOptions } from './options';
 import { BaseComponentOptions, Parameters } from '../panel/types';
 import { Emitter, Event } from '../events';
+import { LayoutChangeEvent } from '../types';
 import { SplitviewPanel, ISplitviewPanel } from './splitviewPanel';
 import { Resizable } from '../resizable';
 import { Classnames } from '../dom';
@@ -63,7 +64,7 @@ export interface ISplitviewComponent extends IDisposable {
         options: AddSplitviewComponentOptions<T>
     ): ISplitviewPanel;
     layout(width: number, height: number): void;
-    onDidLayoutChange: Event<void>;
+    onDidLayoutChange: Event<LayoutChangeEvent>;
     toJSON(): SerializedSplitview;
     fromJSON(serializedSplitview: SerializedSplitview): void;
     focus(): void;
@@ -96,8 +97,9 @@ export class SplitviewComponent
     private readonly _onDidRemoveView = new Emitter<IView>();
     readonly onDidRemoveView = this._onDidRemoveView.event;
 
-    private readonly _onDidLayoutChange = new Emitter<void>();
-    readonly onDidLayoutChange: Event<void> = this._onDidLayoutChange.event;
+    private readonly _onDidLayoutChange = new Emitter<LayoutChangeEvent>();
+    readonly onDidLayoutChange: Event<LayoutChangeEvent> =
+        this._onDidLayoutChange.event;
 
     private readonly _classNames: Classnames;
 
@@ -130,7 +132,9 @@ export class SplitviewComponent
 
         this._splitviewChangeDisposable.value = new CompositeDisposable(
             this._splitview.onDidSashEnd(() => {
-                this._onDidLayoutChange.fire(undefined);
+                this._onDidLayoutChange.fire({
+                    reasons: new Set(['geometry']),
+                });
             }),
             this._splitview.onDidAddView((e) => this._onDidAddView.fire(e)),
             this._splitview.onDidRemoveView((e) =>

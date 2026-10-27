@@ -327,3 +327,49 @@ export class AsapEvent implements IDisposable {
         this._onFired.dispose();
     }
 }
+
+/** {@link AsapEvent} whose fires carry a reason: one microtask dispatch
+ *  delivers the union of the reasons fired since the last one. */
+export class AsapReasonEvent<R> implements IDisposable {
+    private readonly _onFired = new Emitter<{
+        readonly reasons: ReadonlySet<R>;
+    }>();
+    private _currentFireCount = 0;
+    private _reasons = new Set<R>();
+    private _queued = false;
+
+    readonly onEvent: Event<{ readonly reasons: ReadonlySet<R> }> = (
+        listener
+    ) => {
+        const fireCountAtTimeOfEventSubscription = this._currentFireCount;
+
+        return this._onFired.event((e) => {
+            // as AsapEvent: ignore a dispatch of fires that predate the subscription
+            if (this._currentFireCount > fireCountAtTimeOfEventSubscription) {
+                listener(e);
+            }
+        });
+    };
+
+    fire(reason: R): void {
+        this._currentFireCount++;
+        this._reasons.add(reason);
+
+        if (this._queued) {
+            return;
+        }
+
+        this._queued = true;
+
+        queueMicrotask(() => {
+            this._queued = false;
+            const reasons = this._reasons;
+            this._reasons = new Set<R>();
+            this._onFired.fire({ reasons });
+        });
+    }
+
+    dispose(): void {
+        this._onFired.dispose();
+    }
+}

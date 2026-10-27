@@ -1,6 +1,7 @@
 import {
     AcceptableEvent,
     AsapEvent,
+    AsapReasonEvent,
     DockviewEvent,
     Emitter,
     Event,
@@ -676,6 +677,89 @@ describe('events', () => {
             event.dispose();
 
             event.fire();
+            await Promise.resolve();
+
+            expect(count).toBe(0);
+        });
+    });
+
+    describe('AsapReasonEvent', () => {
+        beforeEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('delivers the union of the reasons fired in one task, once', async () => {
+            const event = new AsapReasonEvent<'a' | 'b' | 'c'>();
+
+            const received: string[][] = [];
+            const disposable = event.onEvent((e) => {
+                received.push([...e.reasons].sort());
+            });
+
+            event.fire('a');
+            event.fire('b');
+            event.fire('a');
+
+            expect(received).toHaveLength(0);
+
+            await Promise.resolve();
+
+            expect(received).toEqual([['a', 'b']]);
+
+            disposable.dispose();
+            event.dispose();
+        });
+
+        it('starts a fresh set of reasons for the next task', async () => {
+            const event = new AsapReasonEvent<'a' | 'b'>();
+
+            const received: string[][] = [];
+            const disposable = event.onEvent((e) => {
+                received.push([...e.reasons].sort());
+            });
+
+            event.fire('a');
+            await Promise.resolve();
+            event.fire('b');
+            await Promise.resolve();
+
+            expect(received).toEqual([['a'], ['b']]);
+
+            disposable.dispose();
+            event.dispose();
+        });
+
+        it('does not dispatch to a listener subscribed after the fire', async () => {
+            const event = new AsapReasonEvent<'a'>();
+
+            let early = 0;
+            let late = 0;
+            event.onEvent(() => {
+                early++;
+            });
+            event.fire('a');
+            event.onEvent(() => {
+                late++;
+            });
+
+            await Promise.resolve();
+
+            expect(early).toBe(1);
+            expect(late).toBe(0);
+
+            event.dispose();
+        });
+
+        it('dispose tears down the underlying emitter', async () => {
+            const event = new AsapReasonEvent<'a'>();
+
+            let count = 0;
+            event.onEvent(() => {
+                count++;
+            });
+
+            event.dispose();
+            event.fire('a');
             await Promise.resolve();
 
             expect(count).toBe(0);

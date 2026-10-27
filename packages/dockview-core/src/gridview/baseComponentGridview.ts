@@ -1,4 +1,5 @@
-import { Emitter, Event, AsapEvent } from '../events';
+import { Emitter, Event, AsapEvent, AsapReasonEvent } from '../events';
+import { LayoutChangeEvent, LayoutChangeReason } from '../types';
 import { getGridLocation, Gridview, IGridView } from './gridview';
 import { Position } from '../dnd/droptarget';
 import { Disposable, IDisposable, IValueDisposable } from '../lifecycle';
@@ -65,7 +66,7 @@ export interface IBaseGrid<T extends IGridPanelView> extends IDisposable {
     readonly size: number;
     readonly groups: T[];
     readonly onDidMaximizedChange: Event<MaximizedChanged<T>>;
-    readonly onDidLayoutChange: Event<void>;
+    readonly onDidLayoutChange: Event<LayoutChangeEvent>;
     getPanel(id: string): T | undefined;
     toJSON(): object;
     fromJSON(data: any): void;
@@ -103,8 +104,9 @@ export abstract class BaseGrid<T extends IGridPanelView>
     readonly onDidActiveChange: Event<T | undefined> =
         this._onDidActiveChange.event;
 
-    protected readonly _bufferOnDidLayoutChange = new AsapEvent();
-    readonly onDidLayoutChange: Event<void> =
+    protected readonly _bufferOnDidLayoutChange =
+        new AsapReasonEvent<LayoutChangeReason>();
+    readonly onDidLayoutChange: Event<LayoutChangeEvent> =
         this._bufferOnDidLayoutChange.onEvent;
 
     private readonly _onDidViewVisibilityChangeMicroTaskQueue = new AsapEvent();
@@ -200,14 +202,21 @@ export abstract class BaseGrid<T extends IGridPanelView>
                 this.element.remove();
             }),
             this.gridview.onDidChange(() => {
-                this._bufferOnDidLayoutChange.fire();
+                // sash drag, setSize, maximize: sizes changed
+                this._bufferOnDidLayoutChange.fire('geometry');
             }),
             Event.any(
                 this.onDidAdd,
-                this.onDidRemove,
-                this.onDidActiveChange
+                this.onDidRemove
             )(() => {
-                this._bufferOnDidLayoutChange.fire();
+                this._bufferOnDidLayoutChange.fire('structure');
+            }),
+            this.onDidActiveChange(() => {
+                this._bufferOnDidLayoutChange.fire('activePanel');
+            }),
+            this.onDidMaximizedChange(() => {
+                // the maximized view is serialized, so it is a layout change
+                this._bufferOnDidLayoutChange.fire('geometry');
             }),
             this._onDidMaximizedChange,
             this._onDidViewVisibilityChangeMicroTaskQueue,
@@ -223,7 +232,7 @@ export abstract class BaseGrid<T extends IGridPanelView>
 
     public setVisible(panel: T, visible: boolean): void {
         this.gridview.setViewVisible(getGridLocation(panel.element), visible);
-        this._bufferOnDidLayoutChange.fire();
+        this._bufferOnDidLayoutChange.fire('geometry');
     }
 
     public isVisible(panel: T): boolean {

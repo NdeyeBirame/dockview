@@ -117,7 +117,7 @@ import {
     IAdvancedOverflowService,
 } from './moduleContracts';
 import { IHeaderActionsHost } from './headerActionsService';
-import { AnchoredBox, AnchorPosition, Box } from '../types';
+import { AnchoredBox, AnchorPosition, Box, LayoutChangeReason } from '../types';
 import {
     DEFAULT_FLOATING_GROUP_OVERFLOW_SIZE,
     DEFAULT_FLOATING_GROUP_POSITION,
@@ -1587,8 +1587,9 @@ export class DockviewComponent
         );
     }
 
-    fireLayoutChange(): void {
-        this._bufferOnDidLayoutChange.fire();
+    /** Ping `onDidLayoutChange` (coalesced) with why the layout changed. */
+    fireLayoutChange(reason: LayoutChangeReason): void {
+        this._bufferOnDidLayoutChange.fire(reason);
     }
 
     /**
@@ -1799,7 +1800,12 @@ export class DockviewComponent
             this._onDidTabGroupCollapsedChange,
             Event.any<unknown>(
                 this.onDidPopoutGroupSizeChange,
-                this.onDidPopoutGroupPositionChange,
+                this.onDidPopoutGroupPositionChange
+            )(() => {
+                // Popout window size/position persists as a layout change.
+                this.fireLayoutChange('geometry');
+            }),
+            Event.any<unknown>(
                 this.onDidCreateTabGroup,
                 this.onDidDestroyTabGroup,
                 this.onDidAddPanelToTabGroup,
@@ -1807,8 +1813,8 @@ export class DockviewComponent
                 this.onDidTabGroupChange,
                 this.onDidTabGroupCollapsedChange
             )(() => {
-                // Popout size/position and tab-group mutations persist as layout changes.
-                this.fireLayoutChange();
+                // Tab-group mutations persist as layout changes.
+                this.fireLayoutChange('structure');
             }),
             this._onDidOptionsChange,
             this.onDidAdd((event) => {
@@ -1838,10 +1844,12 @@ export class DockviewComponent
                 this.onDidAddGroup,
                 this.onDidRemove,
                 this.onDidRemoveGroup,
-                this.onDidMovePanel,
-                this.onDidActivePanelChange
+                this.onDidMovePanel
             )(() => {
-                this._bufferOnDidLayoutChange.fire();
+                this._bufferOnDidLayoutChange.fire('structure');
+            }),
+            this.onDidActivePanelChange(() => {
+                this._bufferOnDidLayoutChange.fire('activePanel');
             }),
             Disposable.from(() => {
                 // Registry disposes init() subscriptions then every module
@@ -6598,11 +6606,11 @@ export class DockviewComponent
                         this.fireActivePanelChange(event.panel);
                     }
                 }),
-                Event.any(
-                    view.model.onDidPanelTitleChange,
-                    view.model.onDidPanelParametersChange
-                )(() => {
-                    this._bufferOnDidLayoutChange.fire();
+                view.model.onDidPanelTitleChange(() => {
+                    this._bufferOnDidLayoutChange.fire('panelTitle');
+                }),
+                view.model.onDidPanelParametersChange(() => {
+                    this._bufferOnDidLayoutChange.fire('panelParameters');
                 })
             );
 

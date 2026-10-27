@@ -13,7 +13,7 @@ import {
     PositionResolverArgs,
     PositionResolverResult,
 } from '../dnd/droptarget';
-import { Box } from '../types';
+import { Box, LayoutChangeEvent } from '../types';
 import { IDragGhostSpec } from '../dnd/backend';
 import { DockviewApi } from '../api/component.api';
 import { DockviewGroupPanel } from './dockviewGroupPanel';
@@ -233,9 +233,10 @@ export interface ILayoutHistoryHost {
     readonly onWillMutateLayout: Event<DockviewLayoutMutationEvent>;
     /** Fires after a structural mutation; used to capture the post-image. */
     readonly onDidMutateLayout: Event<DockviewLayoutMutationEvent>;
-    /** Coalesced (microtask-buffered) ping after any layout change; the only
-     *  signal for sash resize, which does not go through the mutation boundary. */
-    readonly onDidLayoutChange: Event<void>;
+    /** Coalesced (microtask-buffered) ping after any layout change; `reasons`
+     *  is the union of what changed since the last ping. The only signal for
+     *  sash resize, and only a ping carrying `'geometry'` is a resize candidate. */
+    readonly onDidLayoutChange: Event<LayoutChangeEvent>;
     /** Settles once any in-flight popout-window restoration (from `fromJSON`)
      *  completes. Popouts re-open asynchronously, so undo/redo holds its guard
      *  until this resolves. Already-resolved when nothing is restoring. */
