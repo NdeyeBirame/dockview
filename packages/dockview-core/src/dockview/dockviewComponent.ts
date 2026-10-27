@@ -4153,7 +4153,7 @@ export class DockviewComponent
              * container and its `onDidRemovePanel` never fired.
              */
             for (const group of this.groups) {
-                for (const panel of [...group.panels]) {
+                for (const panel of group.panels.slice()) {
                     this.removePanel(panel, {
                         removeEmptyGroup: false,
                         skipDispose: false,
