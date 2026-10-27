@@ -6629,6 +6629,231 @@ describe('dockviewComponent', () => {
         expect(el!.childNodes).toHaveLength(0);
     });
 
+    describe('corrupt layout: recovery', () => {
+        /**
+         * A component whose `createComponent` throws for `'bad'`, so a layout
+         * referencing it fails part-way through deserialization — after the
+         * groups ahead of it in the grid have already been built.
+         */
+        function createRecoveryDockview(container: HTMLElement) {
+            return new DockviewComponent(container, {
+                createComponent(options) {
+                    switch (options.name) {
+                        case 'default':
+                            return new PanelContentPartTest(
+                                options.id,
+                                options.name
+                            );
+                        default:
+                            throw new Error(
+                                `unsupported panel '${options.name}'`
+                            );
+                    }
+                },
+            });
+        }
+
+        function panelState(
+            id: string,
+            component: string,
+            renderer?: 'always'
+        ) {
+            return {
+                id,
+                contentComponent: component,
+                title: id,
+                ...(renderer ? { renderer } : {}),
+            };
+        }
+
+        test('removes every panel of a successfully created group, not every other one', () => {
+            const container = document.createElement('div');
+            const dockview = createRecoveryDockview(container);
+            dockview.layout(1000, 500);
+
+            const removed: string[] = [];
+            dockview.onDidRemovePanel((panel) => removed.push(panel.id));
+
+            const consoleError = jest
+                .spyOn(console, 'error')
+                .mockImplementation(() => {
+                    /* silence the expected deserialization warning */
+                });
+
+            // Group '1' is fully built (four `always` panels, each attached
+            // to the overlay render container) before group '2' throws.
+            expect(() => {
+                dockview.fromJSON({
+                    grid: {
+                        root: {
+                            type: 'branch',
+                            data: [
+                                {
+                                    type: 'leaf',
+                                    data: {
+                                        views: ['a1', 'a2', 'a3', 'a4'],
+                                        activeView: 'a1',
+                                        id: '1',
+                                    },
+                                    size: 500,
+                                },
+                                {
+                                    type: 'leaf',
+                                    data: {
+                                        views: ['b1'],
+                                        activeView: 'b1',
+                                        id: '2',
+                                    },
+                                    size: 500,
+                                },
+                            ],
+                            size: 500,
+                        },
+                        width: 1000,
+                        height: 500,
+                        orientation: Orientation.HORIZONTAL,
+                    },
+                    panels: {
+                        a1: panelState('a1', 'default', 'always'),
+                        a2: panelState('a2', 'default', 'always'),
+                        a3: panelState('a3', 'default', 'always'),
+                        a4: panelState('a4', 'default', 'always'),
+                        b1: panelState('b1', 'bad'),
+                    },
+                    activeGroup: '1',
+                });
+            }).toThrow("unsupported panel 'bad'");
+
+            consoleError.mockRestore();
+
+            expect(dockview.groups).toHaveLength(0);
+            expect(dockview.panels).toHaveLength(0);
+
+            // `group.panels` is the live array and `removePanel` splices it;
+            // walking it directly skipped a2 and a4, leaving them attached.
+            expect(removed.sort()).toEqual(['a1', 'a2', 'a3', 'a4']);
+
+            const overlayRenderContainer = (dockview as any)
+                .overlayRenderContainer as OverlayRenderContainer;
+            expect(Object.keys((overlayRenderContainer as any).map)).toEqual(
+                []
+            );
+            expect(
+                container.querySelectorAll('.dv-render-overlay')
+            ).toHaveLength(0);
+
+            dockview.dispose();
+        });
+
+        test('leaves edge groups intact so the component stays usable', () => {
+            const container = document.createElement('div');
+            const dockview = createRecoveryDockview(container);
+            dockview.layout(1000, 500);
+
+            dockview.addPanel({ id: 'grid1', component: 'default' });
+            dockview.addEdgeGroup('left', { id: 'left-group' });
+            dockview.addPanel({
+                id: 'edge1',
+                component: 'default',
+                position: { referenceGroup: 'left-group' },
+            });
+
+            const good = dockview.toJSON();
+            expect(good.edgeGroups?.left?.group?.views).toEqual(['edge1']);
+
+            const edgeGroup = dockview.getEdgeGroupPanel('left')!;
+            expect(edgeGroup).toBeDefined();
+
+            const removedGroups: string[] = [];
+            dockview.onDidRemoveGroup((group) => removedGroups.push(group.id));
+
+            const consoleError = jest
+                .spyOn(console, 'error')
+                .mockImplementation(() => {
+                    /* silence the expected deserialization warning */
+                });
+
+            expect(() => {
+                dockview.fromJSON({
+                    grid: {
+                        root: {
+                            type: 'branch',
+                            data: [
+                                {
+                                    type: 'leaf',
+                                    data: {
+                                        views: ['b1'],
+                                        activeView: 'b1',
+                                        id: '1',
+                                    },
+                                    size: 1000,
+                                },
+                            ],
+                            size: 500,
+                        },
+                        width: 1000,
+                        height: 500,
+                        orientation: Orientation.HORIZONTAL,
+                    },
+                    panels: {
+                        b1: panelState('b1', 'bad'),
+                    },
+                    activeGroup: '1',
+                });
+            }).toThrow("unsupported panel 'bad'");
+
+            consoleError.mockRestore();
+
+            // Same post-clear state a successful `fromJSON` of a layout
+            // without the edge group leaves: the edge group is still
+            // registered, undisposed and empty — it was never a grid group
+            // for the recovery to tear down.
+            expect(removedGroups).not.toContain('left-group');
+            expect(dockview.getEdgeGroupPanel('left')).toBe(edgeGroup);
+            expect(edgeGroup.isDisposed).toBe(false);
+            expect(edgeGroup.panels).toHaveLength(0);
+            expect(dockview.panels).toHaveLength(0);
+            expect(dockview.toJSON().edgeGroups?.left?.group?.views).toEqual(
+                []
+            );
+
+            // The position is still occupied, exactly as after `clear()`...
+            expect(() =>
+                dockview.addEdgeGroup('left', { id: 'left-group-2' })
+            ).toThrow("dockview: edge group already exists at position 'left'");
+
+            // ...and the group still accepts panels.
+            dockview.addPanel({
+                id: 'edge2',
+                component: 'default',
+                position: { referenceGroup: 'left-group' },
+            });
+            expect(edgeGroup.panels.map((panel) => panel.id)).toEqual([
+                'edge2',
+            ]);
+
+            // A subsequent good restore brings the edge group's panels back.
+            dockview.fromJSON(good);
+            expect(dockview.getEdgeGroupPanel('left')).toBe(edgeGroup);
+            expect(edgeGroup.panels.map((panel) => panel.id)).toEqual([
+                'edge1',
+            ]);
+            expect(dockview.panels.map((panel) => panel.id).sort()).toEqual([
+                'edge1',
+                'grid1',
+            ]);
+
+            // The edge group can still be removed and re-added normally.
+            dockview.removeEdgeGroup('left');
+            expect(dockview.getEdgeGroupPanel('left')).toBeUndefined();
+            expect(() =>
+                dockview.addEdgeGroup('left', { id: 'left-group' })
+            ).not.toThrow();
+
+            dockview.dispose();
+        });
+    });
+
     test('that disableResizing is always true because the shell manages resizing', () => {
         const container = document.createElement('div');
 
