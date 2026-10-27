@@ -936,6 +936,67 @@ describe('gridview', () => {
         ).toHaveLength(4);
     });
 
+    test('removeView: collapsing a branch whose surviving sibling branch contains branches keeps sizes', () => {
+        // root V[A, H1[B, V2[C, H3[D, E]]]] - removing B collapses H1 and
+        // promotes V2's children (a leaf and a branch) into the root. The
+        // promoted branch H3 must keep its extent along the root axis, not
+        // its own-axis extent.
+        const gridview = new Gridview(
+            true,
+            { separatorBorder: '' },
+            Orientation.VERTICAL
+        );
+        gridview.layout(1000, 1000);
+
+        const a = new MockGridview('A');
+        const b = new MockGridview('B');
+        const c = new MockGridview('C');
+        const d = new MockGridview('D');
+        const e = new MockGridview('E');
+
+        gridview.addView(a, Sizing.Distribute, [0]);
+        gridview.addView(b, Sizing.Distribute, [1]);
+        gridview.addView(c, Sizing.Distribute, [1, 1]);
+        gridview.addView(d, Sizing.Distribute, [1, 1, 1]);
+        gridview.addView(e, Sizing.Distribute, [1, 1, 1, 1]);
+
+        expect(a.height).toBe(500);
+        expect(c.height).toBe(250);
+        expect(d.height).toBe(250);
+        expect(e.height).toBe(250);
+
+        gridview.removeView([1, 0], Sizing.Distribute);
+
+        expect(gridview.serialize()).toEqual({
+            height: 1000,
+            orientation: 'VERTICAL',
+            root: {
+                data: [
+                    { data: { id: 'A' }, size: 500, type: 'leaf' },
+                    { data: { id: 'C' }, size: 250, type: 'leaf' },
+                    {
+                        data: [
+                            { data: { id: 'D' }, size: 500, type: 'leaf' },
+                            { data: { id: 'E' }, size: 500, type: 'leaf' },
+                        ],
+                        size: 250,
+                        type: 'branch',
+                    },
+                ],
+                size: 1000,
+                type: 'branch',
+            },
+            width: 1000,
+        });
+
+        expect(a.height).toBe(500);
+        expect(c.height).toBe(250);
+        expect(d.height).toBe(250);
+        expect(e.height).toBe(250);
+        expect(d.width).toBe(500);
+        expect(e.width).toBe(500);
+    });
+
     test('that calling insertOrthogonalSplitviewAtRoot() for an empty view doesnt add any nodes', () => {
         const gridview = new Gridview(
             false,
@@ -1524,6 +1585,107 @@ describe('gridview', () => {
             expect(
                 gridview.element.querySelectorAll('.mock-grid-view')
             ).toHaveLength(2);
+        });
+
+        test('promotes a branch child whose children include branches without resizing them', () => {
+            // root H[V[A, H[B, C], D]] - after normalize the root is the
+            // vertical branch and its children must keep their heights.
+            const gridview = new Gridview(
+                false,
+                { separatorBorder: '' },
+                Orientation.HORIZONTAL
+            );
+            gridview.layout(1000, 1000);
+
+            const views = new Map<string, MockGridview>();
+            const view = (id: string): MockGridview =>
+                views.get(id) as MockGridview;
+            gridview.deserialize(
+                {
+                    height: 1000,
+                    width: 1000,
+                    orientation: Orientation.HORIZONTAL,
+                    root: {
+                        type: 'branch',
+                        size: 1000,
+                        data: [
+                            {
+                                type: 'branch',
+                                size: 1000,
+                                data: [
+                                    {
+                                        type: 'leaf',
+                                        size: 300,
+                                        data: { id: 'A' },
+                                    },
+                                    {
+                                        type: 'branch',
+                                        size: 500,
+                                        data: [
+                                            {
+                                                type: 'leaf',
+                                                size: 500,
+                                                data: { id: 'B' },
+                                            },
+                                            {
+                                                type: 'leaf',
+                                                size: 500,
+                                                data: { id: 'C' },
+                                            },
+                                        ],
+                                    },
+                                    {
+                                        type: 'leaf',
+                                        size: 200,
+                                        data: { id: 'D' },
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+                {
+                    fromJSON: (node) => {
+                        const id = (node.data as { id: string }).id;
+                        const view = new MockGridview(id);
+                        views.set(id, view);
+                        return view;
+                    },
+                }
+            );
+
+            expect(view('A').height).toBe(300);
+            expect(view('B').height).toBe(500);
+            expect(view('D').height).toBe(200);
+
+            gridview.normalize();
+            gridview.layout(1000, 1000);
+
+            expect(gridview.serialize()).toEqual({
+                height: 1000,
+                orientation: 'VERTICAL',
+                root: {
+                    data: [
+                        { data: { id: 'A' }, size: 300, type: 'leaf' },
+                        {
+                            data: [
+                                { data: { id: 'B' }, size: 500, type: 'leaf' },
+                                { data: { id: 'C' }, size: 500, type: 'leaf' },
+                            ],
+                            size: 500,
+                            type: 'branch',
+                        },
+                        { data: { id: 'D' }, size: 200, type: 'leaf' },
+                    ],
+                    size: 1000,
+                    type: 'branch',
+                },
+                width: 1000,
+            });
+            expect(view('A').height).toBe(300);
+            expect(view('B').height).toBe(500);
+            expect(view('C').height).toBe(500);
+            expect(view('D').height).toBe(200);
         });
 
         test('should not normalize when root has single leaf child', () => {
