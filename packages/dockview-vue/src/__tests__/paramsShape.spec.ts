@@ -34,7 +34,7 @@ async function settle() {
 describe('params are delivered under the params prop only', () => {
     test('paneview: updateParameters and layout keep params flat', async () => {
         const Probe = defineComponent({
-            name: 'Probe',
+            name: 'ProbePanel',
             props: ['params', 'api', 'containerApi', 'title'],
             template:
                 '<div class="probe">wrapped={{ !!(params && params.params) }}|a={{ params?.a }}|b={{ params?.b }}|title={{ title }}|api.id={{ api?.id }}</div>',
@@ -53,21 +53,15 @@ describe('params are delivered under the params prop only', () => {
         });
         await settle();
         const probe = () => container.querySelector('.probe')?.textContent;
-        expect(probe()).toBe(
-            'wrapped=false|a=1|b=|title=REAL|api.id=p1'
-        );
+        expect(probe()).toBe('wrapped=false|a=1|b=|title=REAL|api.id=p1');
 
         panel.api.updateParameters({ b: 2 });
         await settle();
-        expect(probe()).toBe(
-            'wrapped=false|a=1|b=2|title=REAL|api.id=p1'
-        );
+        expect(probe()).toBe('wrapped=false|a=1|b=2|title=REAL|api.id=p1');
 
         api.layout(600, 600);
         await settle();
-        expect(probe()).toBe(
-            'wrapped=false|a=1|b=2|title=REAL|api.id=p1'
-        );
+        expect(probe()).toBe('wrapped=false|a=1|b=2|title=REAL|api.id=p1');
 
         api.dispose();
         wrapper.unmount();
@@ -75,7 +69,7 @@ describe('params are delivered under the params prop only', () => {
 
     test('splitview: layout does not spread params as top-level props', async () => {
         const Probe = defineComponent({
-            name: 'Probe',
+            name: 'ProbePanel',
             props: ['params', 'api', 'containerApi'],
             template:
                 '<div class="probe">api.id={{ api?.id }}|params.api={{ params?.api }}|leaked={{ $attrs.foo }}</div>',
