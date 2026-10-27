@@ -4146,9 +4146,14 @@ export class DockviewComponent
 
             /**
              * Takes all the successfully created groups and remove all of their panels.
+             *
+             * `group.panels` is the group's live array and `removePanel`
+             * splices it, so iterate a copy — walking the live array skips
+             * every other panel, leaving it attached to the overlay render
+             * container and its `onDidRemovePanel` never fired.
              */
             for (const group of this.groups) {
-                for (const panel of group.panels) {
+                for (const panel of group.panels.slice()) {
                     this.removePanel(panel, {
                         removeEmptyGroup: false,
                         skipDispose: false,
@@ -4159,8 +4164,21 @@ export class DockviewComponent
             /**
              * To remove a group we cannot call this.removeGroup(...) since this makes assumptions about
              * the underlying HTMLElement existing in the Gridview.
+             *
+             * Edge groups are structural (owned by the edge-group service and
+             * the shell, not the grid), so they are skipped here exactly as
+             * `_doClear` and `doRemoveGroup` skip them. Disposing one would
+             * leave the service holding a dead group: `addEdgeGroup` at that
+             * position reports it as existing, `addPanel` against it fails,
+             * and a later good `fromJSON` restores nothing into it. The panel
+             * loop above has already emptied them and the `clear()` below
+             * keeps them registered: the same state a successful restore of a
+             * layout without that edge group leaves them in.
              */
             for (const group of this.groups) {
+                if (this._edgeGroupService?.includes(group)) {
+                    continue;
+                }
                 group.dispose();
                 this._groups.delete(group.id);
                 this._onDidRemoveGroup.fire(group);
