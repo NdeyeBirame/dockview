@@ -4735,7 +4735,6 @@ export class DockviewComponent
                     index,
                 });
             } else if (
-                referenceGroup.api.location.type === 'floating' ||
                 referenceGroup.api.location.type === 'edge' ||
                 target === 'center'
             ) {
@@ -4755,18 +4754,26 @@ export class DockviewComponent
                     this.doSetGroupAndPanelActive(referenceGroup);
                 }
             } else {
+                // A floating / popout reference splits its own window, the
+                // same way an edge drop onto that group does.
+                const referenceGridview =
+                    this.getGridviewForGroup(referenceGroup);
                 const location = getGridLocation(referenceGroup.element);
                 const relativeLocation = getRelativeLocation(
-                    this.gridview.orientation,
+                    referenceGridview.orientation,
                     location,
                     target
                 );
                 const group = this.createGroupAtLocation(
                     relativeLocation,
-                    this.orientationAtLocation(relativeLocation) ===
-                        Orientation.VERTICAL
+                    this.orientationAtLocation(
+                        relativeLocation,
+                        referenceGridview
+                    ) === Orientation.VERTICAL
                         ? initial?.height
-                        : initial?.width
+                        : initial?.width,
+                    undefined,
+                    referenceGridview
                 );
                 panel = this.createPanel(options, group);
                 group.model.openPanel(panel, {
@@ -5206,20 +5213,29 @@ export class DockviewComponent
 
             const target = toTarget(<Direction>options.direction || 'within');
 
+            // A floating / popout reference splits its own window; the new
+            // group is created in, and tagged for, that gridview.
+            const referenceGridview = this.getGridviewForGroup(referenceGroup);
             const location = getGridLocation(referenceGroup.element);
             const relativeLocation = getRelativeLocation(
-                this.gridview.orientation,
+                referenceGridview.orientation,
                 location,
                 target
             );
 
-            const group = this.createGroup(options);
             const size =
-                this.getLocationOrientation(relativeLocation) ===
-                Orientation.VERTICAL
+                this.orientationAtLocation(
+                    relativeLocation,
+                    referenceGridview
+                ) === Orientation.VERTICAL
                     ? options.initialHeight
                     : options.initialWidth;
-            this.doAddGroup(group, relativeLocation, size);
+            const group = this.createGroupAtLocation(
+                relativeLocation,
+                size,
+                options,
+                referenceGridview
+            );
             if (!options.skipSetActive) {
                 this.doSetGroupAndPanelActive(group);
             }
@@ -5231,13 +5247,6 @@ export class DockviewComponent
             this.doSetGroupAndPanelActive(group);
             return group;
         }
-    }
-
-    private getLocationOrientation(location: number[]) {
-        return location.length % 2 == 0 &&
-            this.gridview.orientation === Orientation.HORIZONTAL
-            ? Orientation.HORIZONTAL
-            : Orientation.VERTICAL;
     }
 
     removeGroup(
@@ -6116,14 +6125,21 @@ export class DockviewComponent
         ) {
             targetGroup = destinationGroup;
         } else {
+            // referenceLocation is relative to the gridview that owns the
+            // destination (main, floating or popout), so the new group must
+            // be created in that same gridview.
+            const destinationGridview =
+                this.getGridviewForGroup(destinationGroup);
             const dropLocation = getRelativeLocation(
-                this.gridview.orientation,
+                destinationGridview.orientation,
                 referenceLocation,
                 destinationTarget
             );
             targetGroup = this.createGroupAtLocation(
                 dropLocation,
-                this.sizingForDrop(referenceLocation)
+                this.sizingForDrop(referenceLocation),
+                undefined,
+                destinationGridview
             );
         }
 
@@ -6794,8 +6810,11 @@ export class DockviewComponent
         )?.value;
     }
 
-    private orientationAtLocation(location: number[]) {
-        const rootOrientation = this.gridview.orientation;
+    private orientationAtLocation(
+        location: number[],
+        gridview: Gridview = this.gridview
+    ) {
+        const rootOrientation = gridview.orientation;
         return location.length % 2 == 1
             ? rootOrientation
             : orthogonal(rootOrientation);

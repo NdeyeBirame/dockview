@@ -8,6 +8,7 @@ import {
 } from '../../dockview/types';
 import { PanelUpdateEvent } from '../../panel/types';
 import { Orientation } from '../../splitview/splitview';
+import { Gridview } from '../../gridview/gridview';
 import { CompositeDisposable } from '../../lifecycle';
 import { Emitter } from '../../events';
 import { DockviewPanel, IDockviewPanel } from '../../dockview/dockviewPanel';
@@ -8325,6 +8326,377 @@ describe('dockviewComponent', () => {
                 expect(() => dockview.clear()).not.toThrow();
 
                 jest.useRealTimers();
+            });
+
+            describe('placing groups relative to a floating / popout reference', () => {
+                // Every registered group must live in exactly the gridview
+                // that owns it; a group with no element in any grid is the
+                // dangling-group failure mode.
+                const expectNoDanglingGroups = (
+                    dockview: DockviewComponent
+                ) => {
+                    for (const group of dockview.groups) {
+                        if (group.api.location.type === 'edge') {
+                            continue;
+                        }
+                        expect(
+                            dockview
+                                .getGridviewForGroup(group)
+                                .element.contains(group.element)
+                        ).toBe(true);
+                    }
+                };
+
+                test('a tab-group edge drop onto a floating group splits the floating window, not the main grid', () => {
+                    const dockview = make();
+                    dockview.layout(1000, 500);
+
+                    dockview.addPanel({ id: 'panel_1', component: 'default' });
+                    dockview.addPanel({ id: 'panel_2', component: 'default' });
+                    dockview.addPanel({ id: 'panel_3', component: 'default' });
+                    const floatingPanel = dockview.addPanel({
+                        id: 'floating_1',
+                        component: 'default',
+                        floating: true,
+                    });
+
+                    const panel1 = dockview.getGroupPanel('panel_1')!;
+                    const panel2 = dockview.getGroupPanel('panel_2')!;
+                    const sourceGroup = panel1.group;
+                    const tabGroup = sourceGroup.model.createTabGroup({
+                        label: 'Feature',
+                    });
+                    sourceGroup.model.addPanelToTabGroup(
+                        tabGroup.id,
+                        'panel_1'
+                    );
+                    sourceGroup.model.addPanelToTabGroup(
+                        tabGroup.id,
+                        'panel_2'
+                    );
+
+                    const mainGridview = (dockview as any).gridview as Gridview;
+                    const floatingGridview = dockview.getGridviewForGroup(
+                        floatingPanel.group
+                    );
+                    expect(floatingGridview).not.toBe(mainGridview);
+
+                    dockview.moveGroupOrPanel({
+                        from: {
+                            groupId: sourceGroup.id,
+                            tabGroupId: tabGroup.id,
+                        },
+                        to: { group: floatingPanel.group, position: 'right' },
+                    });
+
+                    expect(panel1.group).toBe(panel2.group);
+                    expect(panel1.group).not.toBe(floatingPanel.group);
+                    expect(panel1.group.api.location.type).toBe('floating');
+                    expect(dockview.getGridviewForGroup(panel1.group)).toBe(
+                        floatingGridview
+                    );
+                    expect(
+                        floatingGridview.element.contains(panel1.group.element)
+                    ).toBe(true);
+                    expect(
+                        mainGridview.element.contains(panel1.group.element)
+                    ).toBe(false);
+                    expect(dockview.floatingGroups).toHaveLength(1);
+                    expect(panel1.group.model.getTabGroups()[0].label).toBe(
+                        'Feature'
+                    );
+                    expectNoDanglingGroups(dockview);
+
+                    dockview.dispose();
+                });
+
+                test('a tab-group edge drop onto a popout group splits the popout window, not the main grid', async () => {
+                    window.open = () => setupMockWindow();
+                    const dockview = make();
+                    dockview.layout(1000, 500);
+
+                    dockview.addPanel({ id: 'panel_1', component: 'default' });
+                    dockview.addPanel({ id: 'panel_2', component: 'default' });
+                    dockview.addPanel({ id: 'panel_3', component: 'default' });
+                    const popoutPanel = dockview.addPanel({
+                        id: 'popout_1',
+                        component: 'default',
+                        position: {
+                            referencePanel: 'panel_1',
+                            direction: 'right',
+                        },
+                    });
+                    await dockview.addPopoutGroup(popoutPanel.api.group);
+                    expect(popoutPanel.api.location.type).toBe('popout');
+
+                    const panel1 = dockview.getGroupPanel('panel_1')!;
+                    const panel2 = dockview.getGroupPanel('panel_2')!;
+                    const sourceGroup = panel1.group;
+                    const tabGroup = sourceGroup.model.createTabGroup({
+                        label: 'Feature',
+                    });
+                    sourceGroup.model.addPanelToTabGroup(
+                        tabGroup.id,
+                        'panel_1'
+                    );
+                    sourceGroup.model.addPanelToTabGroup(
+                        tabGroup.id,
+                        'panel_2'
+                    );
+
+                    const mainGridview = (dockview as any).gridview as Gridview;
+                    const popoutGridview = dockview.getGridviewForGroup(
+                        popoutPanel.group
+                    );
+                    expect(popoutGridview).not.toBe(mainGridview);
+
+                    dockview.moveGroupOrPanel({
+                        from: {
+                            groupId: sourceGroup.id,
+                            tabGroupId: tabGroup.id,
+                        },
+                        to: { group: popoutPanel.group, position: 'bottom' },
+                    });
+
+                    expect(panel1.group).toBe(panel2.group);
+                    expect(panel1.group).not.toBe(popoutPanel.group);
+                    expect(panel1.group.api.location.type).toBe('popout');
+                    expect(dockview.getGridviewForGroup(panel1.group)).toBe(
+                        popoutGridview
+                    );
+                    expect(
+                        popoutGridview.element.contains(panel1.group.element)
+                    ).toBe(true);
+                    expect(
+                        mainGridview.element.contains(panel1.group.element)
+                    ).toBe(false);
+                    expectNoDanglingGroups(dockview);
+
+                    dockview.dispose();
+                });
+
+                test('addPanel relative to a popout group with a direction splits the popout window', async () => {
+                    window.open = () => setupMockWindow();
+                    const dockview = make();
+                    dockview.layout(1000, 500);
+
+                    dockview.addPanel({ id: 'panel_1', component: 'default' });
+                    const popoutPanel = dockview.addPanel({
+                        id: 'popout_1',
+                        component: 'default',
+                        position: {
+                            referencePanel: 'panel_1',
+                            direction: 'right',
+                        },
+                    });
+                    await dockview.addPopoutGroup(popoutPanel.api.group);
+                    expect(popoutPanel.api.location.type).toBe('popout');
+
+                    const mainGridview = (dockview as any).gridview as Gridview;
+                    const popoutGridview = dockview.getGridviewForGroup(
+                        popoutPanel.group
+                    );
+                    const mainGroupCount = dockview.groups.filter((group) =>
+                        mainGridview.element.contains(group.element)
+                    ).length;
+
+                    const added = dockview.addPanel({
+                        id: 'panel_2',
+                        component: 'default',
+                        position: {
+                            referenceGroup: popoutPanel.group,
+                            direction: 'right',
+                        },
+                    });
+
+                    expect(added.group).not.toBe(popoutPanel.group);
+                    expect(added.api.location.type).toBe('popout');
+                    expect(dockview.getGridviewForGroup(added.group)).toBe(
+                        popoutGridview
+                    );
+                    expect(
+                        popoutGridview.element.contains(added.group.element)
+                    ).toBe(true);
+                    expect(
+                        mainGridview.element.contains(added.group.element)
+                    ).toBe(false);
+                    expect(
+                        dockview.groups.filter((group) =>
+                            mainGridview.element.contains(group.element)
+                        )
+                    ).toHaveLength(mainGroupCount);
+                    expectNoDanglingGroups(dockview);
+
+                    dockview.dispose();
+                });
+
+                test('addPanel relative to the second member of a popout window does not throw or leave a dangling group', async () => {
+                    window.open = () => setupMockWindow();
+                    const dockview = make();
+                    dockview.layout(1000, 500);
+
+                    dockview.addPanel({ id: 'panel_1', component: 'default' });
+                    const popoutPanel = dockview.addPanel({
+                        id: 'popout_1',
+                        component: 'default',
+                        position: {
+                            referencePanel: 'panel_1',
+                            direction: 'right',
+                        },
+                    });
+                    const second = dockview.addPanel({
+                        id: 'popout_2',
+                        component: 'default',
+                        position: {
+                            referencePanel: 'panel_1',
+                            direction: 'right',
+                        },
+                    });
+                    await dockview.addPopoutGroup(popoutPanel.api.group);
+                    dockview.moveGroupOrPanel({
+                        from: { groupId: second.group.id },
+                        to: { group: popoutPanel.group, position: 'right' },
+                    });
+                    expect(second.api.location.type).toBe('popout');
+
+                    const popoutGridview = dockview.getGridviewForGroup(
+                        popoutPanel.group
+                    );
+                    const groupCount = dockview.groups.length;
+
+                    let added: IDockviewPanel | undefined;
+                    expect(() => {
+                        added = dockview.addPanel({
+                            id: 'popout_3',
+                            component: 'default',
+                            position: {
+                                referenceGroup: second.group,
+                                direction: 'right',
+                            },
+                        });
+                    }).not.toThrow();
+
+                    expect(dockview.groups).toHaveLength(groupCount + 1);
+                    expect(added!.api.location.type).toBe('popout');
+                    expect(dockview.getGridviewForGroup(added!.group)).toBe(
+                        popoutGridview
+                    );
+                    expectNoDanglingGroups(dockview);
+
+                    dockview.dispose();
+                });
+
+                test('addPanel relative to a floating group with a direction splits the floating window', () => {
+                    const dockview = make();
+                    dockview.layout(1000, 500);
+
+                    dockview.addPanel({ id: 'panel_1', component: 'default' });
+                    const floatingPanel = dockview.addPanel({
+                        id: 'floating_1',
+                        component: 'default',
+                        floating: true,
+                    });
+                    const floatingGridview = dockview.getGridviewForGroup(
+                        floatingPanel.group
+                    );
+
+                    const added = dockview.addPanel({
+                        id: 'panel_2',
+                        component: 'default',
+                        position: {
+                            referenceGroup: floatingPanel.group,
+                            direction: 'below',
+                        },
+                    });
+
+                    expect(added.group).not.toBe(floatingPanel.group);
+                    expect(added.api.location.type).toBe('floating');
+                    expect(dockview.getGridviewForGroup(added.group)).toBe(
+                        floatingGridview
+                    );
+                    expect(dockview.floatingGroups).toHaveLength(1);
+                    expectNoDanglingGroups(dockview);
+
+                    dockview.dispose();
+                });
+
+                test('addGroup relative to a floating group with a direction places it inside the floating window', () => {
+                    const dockview = make();
+                    dockview.layout(1000, 500);
+
+                    dockview.addPanel({ id: 'panel_1', component: 'default' });
+                    const floatingPanel = dockview.addPanel({
+                        id: 'floating_1',
+                        component: 'default',
+                        floating: true,
+                    });
+
+                    const mainGridview = (dockview as any).gridview as Gridview;
+                    const floatingGridview = dockview.getGridviewForGroup(
+                        floatingPanel.group
+                    );
+
+                    const group = dockview.addGroup({
+                        referenceGroup: floatingPanel.group,
+                        direction: 'right',
+                    });
+
+                    expect(group.api.location.type).toBe('floating');
+                    expect(dockview.getGridviewForGroup(group)).toBe(
+                        floatingGridview
+                    );
+                    expect(
+                        floatingGridview.element.contains(group.element)
+                    ).toBe(true);
+                    expect(mainGridview.element.contains(group.element)).toBe(
+                        false
+                    );
+                    expect(dockview.floatingGroups).toHaveLength(1);
+                    expectNoDanglingGroups(dockview);
+
+                    dockview.dispose();
+                });
+
+                test('addGroup relative to a popout group with a direction places it inside the popout window', async () => {
+                    window.open = () => setupMockWindow();
+                    const dockview = make();
+                    dockview.layout(1000, 500);
+
+                    dockview.addPanel({ id: 'panel_1', component: 'default' });
+                    const popoutPanel = dockview.addPanel({
+                        id: 'popout_1',
+                        component: 'default',
+                        position: {
+                            referencePanel: 'panel_1',
+                            direction: 'right',
+                        },
+                    });
+                    await dockview.addPopoutGroup(popoutPanel.api.group);
+
+                    const mainGridview = (dockview as any).gridview as Gridview;
+                    const popoutGridview = dockview.getGridviewForGroup(
+                        popoutPanel.group
+                    );
+
+                    const group = dockview.addGroup({
+                        referenceGroup: popoutPanel.group,
+                        direction: 'below',
+                    });
+
+                    expect(group.api.location.type).toBe('popout');
+                    expect(dockview.getGridviewForGroup(group)).toBe(
+                        popoutGridview
+                    );
+                    expect(popoutGridview.element.contains(group.element)).toBe(
+                        true
+                    );
+                    expect(mainGridview.element.contains(group.element)).toBe(
+                        false
+                    );
+                    expectNoDanglingGroups(dockview);
+
+                    dockview.dispose();
+                });
             });
         });
 
