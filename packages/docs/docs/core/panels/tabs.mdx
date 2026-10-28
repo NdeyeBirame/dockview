@@ -161,7 +161,7 @@ const CustomTabRenderer = (props: IDockviewPanelHeaderProps) => {
 return <div>{/* * logic */}</div>
 }
 
-return <DockviewReact defaultTabRenderer={CustomTabRenderer}/>
+return <DockviewReact defaultTabComponent={CustomTabRenderer}/>
 
 ````
 </FrameworkSpecific>
@@ -185,7 +185,7 @@ const App = {
     template: `
       <dockview-vue
         @ready="onReady"
-        :defaultTabRenderer='tab_1'
+        :defaultTabComponent='tab_1'
       >
       </dockview-vue>`,
 };
