@@ -154,6 +154,12 @@ export class Paneview extends CompositeDisposable implements IDisposable {
         index: number,
         options?: { skipDispose?: boolean }
     ): PaneItem {
+        // a negative index would splice from the end of paneItems while the
+        // splitview removes a different view, so reject it up front
+        if (index < 0 || index >= this.paneItems.length) {
+            throw new Error('Index out of bounds');
+        }
+
         const paneItem = this.paneItems.splice(index, 1)[0];
         this.splitview.removeView(index);
 
