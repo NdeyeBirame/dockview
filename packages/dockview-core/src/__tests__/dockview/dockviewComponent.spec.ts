@@ -1281,6 +1281,191 @@ describe('dockviewComponent', () => {
         expect(dockview.activeGroup!.model.activePanel).toBe(panel3);
     });
 
+    describe('activateNext / activatePrevious outside the main grid', () => {
+        function addGridPair() {
+            const grid1 = dockview.addPanel({
+                id: 'grid1',
+                component: 'default',
+            });
+            const grid2 = dockview.addPanel({
+                id: 'grid2',
+                component: 'default',
+                position: { referencePanel: 'grid1', direction: 'right' },
+            });
+            return { grid1, grid2 };
+        }
+
+        test('edge group active: moves to the first / last grid group instead of throwing', () => {
+            dockview.layout(1000, 1000);
+            const { grid1, grid2 } = addGridPair();
+
+            dockview.addEdgeGroup('left', { id: 'edge' });
+            const edgePanel = dockview.addPanel({
+                id: 'e1',
+                component: 'default',
+                position: { referenceGroup: 'edge' },
+            });
+            const edgeGroup = edgePanel.api.group;
+            expect(edgeGroup.api.location.type).toBe('edge');
+            expect(dockview.activeGroup).toBe(edgeGroup);
+
+            expect(() => dockview.activateNext()).not.toThrow();
+            expect(dockview.activeGroup).toBe(grid1.api.group);
+            expect(dockview.activePanel).toBe(grid1);
+
+            dockview.setActivePanel(edgePanel);
+            expect(dockview.activeGroup).toBe(edgeGroup);
+
+            expect(() => dockview.activatePrevious()).not.toThrow();
+            expect(dockview.activeGroup).toBe(grid2.api.group);
+            expect(dockview.activePanel).toBe(grid2);
+        });
+
+        test('edge group active with an empty main grid: no-op instead of throwing', () => {
+            dockview.layout(1000, 1000);
+
+            dockview.addEdgeGroup('bottom', { id: 'edge' });
+            const edgePanel = dockview.addPanel({
+                id: 'e1',
+                component: 'default',
+                position: { referenceGroup: 'edge' },
+            });
+            const edgeGroup = edgePanel.api.group;
+            expect(dockview.activeGroup).toBe(edgeGroup);
+
+            expect(() => dockview.activateNext()).not.toThrow();
+            expect(dockview.activeGroup).toBe(edgeGroup);
+            expect(() => dockview.activatePrevious()).not.toThrow();
+            expect(dockview.activeGroup).toBe(edgeGroup);
+        });
+
+        test('edge group with includePanel: walks its panels first, then leaves to the grid', () => {
+            dockview.layout(1000, 1000);
+            const { grid1, grid2 } = addGridPair();
+
+            dockview.addEdgeGroup('left', { id: 'edge' });
+            const e1 = dockview.addPanel({
+                id: 'e1',
+                component: 'default',
+                position: { referenceGroup: 'edge' },
+            });
+            const e2 = dockview.addPanel({
+                id: 'e2',
+                component: 'default',
+                position: { referenceGroup: 'edge' },
+            });
+            const edgeGroup = e1.api.group;
+            expect(e2.api.group).toBe(edgeGroup);
+
+            dockview.setActivePanel(e1);
+            dockview.activateNext({ includePanel: true });
+            expect(dockview.activeGroup).toBe(edgeGroup);
+            expect(dockview.activePanel).toBe(e2);
+
+            dockview.activateNext({ includePanel: true });
+            expect(dockview.activeGroup).toBe(grid1.api.group);
+
+            dockview.setActivePanel(e2);
+            dockview.activatePrevious({ includePanel: true });
+            expect(dockview.activeGroup).toBe(edgeGroup);
+            expect(dockview.activePanel).toBe(e1);
+
+            dockview.activatePrevious({ includePanel: true });
+            expect(dockview.activeGroup).toBe(grid2.api.group);
+        });
+
+        test('floating group active: traverses its own window, then falls through to the grid', () => {
+            dockview.layout(1000, 1000);
+            const { grid1, grid2 } = addGridPair();
+
+            const float1 = dockview.addPanel({
+                id: 'float1',
+                component: 'default',
+                floating: true,
+            });
+            const floatGroup1 = float1.api.group;
+            expect(floatGroup1.api.location.type).toBe('floating');
+            expect(dockview.activeGroup).toBe(floatGroup1);
+
+            // a lone group in a floating window has nowhere to go within it
+            dockview.activateNext();
+            expect(dockview.activeGroup).toBe(grid1.api.group);
+
+            dockview.setActivePanel(float1);
+            dockview.activatePrevious();
+            expect(dockview.activeGroup).toBe(grid2.api.group);
+
+            // a second group in the same window is traversed before the grid
+            const float2 = dockview.addPanel({
+                id: 'float2',
+                component: 'default',
+                position: { referencePanel: 'grid2', direction: 'right' },
+            });
+            dockview.moveGroupOrPanel({
+                from: { groupId: float2.group.id },
+                to: { group: floatGroup1, position: 'right' },
+            });
+            const floatGroup2 = float2.api.group;
+            expect(floatGroup2).not.toBe(floatGroup1);
+            expect(floatGroup2.api.location.type).toBe('floating');
+            expect(dockview.floatingGroups).toHaveLength(1);
+
+            dockview.setActivePanel(float2);
+            expect(dockview.activeGroup).toBe(floatGroup2);
+
+            dockview.activatePrevious();
+            expect(dockview.activeGroup).toBe(floatGroup1);
+            dockview.activateNext();
+            expect(dockview.activeGroup).toBe(floatGroup2);
+            // ...and rolls over within the window, as the main grid does
+            dockview.activateNext();
+            expect(dockview.activeGroup).toBe(floatGroup1);
+        });
+
+        test('popout group active: falls through to the grid instead of an unrelated grid group', async () => {
+            window.open = () => {
+                const popoutWindow = setupMockWindow();
+                (popoutWindow as Window).focus = jest.fn();
+                return popoutWindow;
+            };
+            dockview.layout(1000, 1000);
+            const { grid1, grid2 } = addGridPair();
+
+            const panel3 = dockview.addPanel({
+                id: 'panel3',
+                component: 'default',
+                position: { referencePanel: 'grid2', direction: 'right' },
+            });
+            expect(await dockview.addPopoutGroup(panel3)).toBeTruthy();
+            const popoutGroup = panel3.api.group;
+            expect(popoutGroup.api.location.type).toBe('popout');
+
+            dockview.setActivePanel(panel3);
+            expect(dockview.activeGroup).toBe(popoutGroup);
+
+            expect(() => dockview.activateNext()).not.toThrow();
+            expect(dockview.activeGroup).toBe(grid1.api.group);
+
+            dockview.setActivePanel(panel3);
+            expect(() => dockview.activatePrevious()).not.toThrow();
+            expect(dockview.activeGroup).toBe(grid2.api.group);
+
+            // a second group in the popout window is traversed before the grid
+            dockview.moveGroupOrPanel({
+                from: { groupId: grid2.group.id },
+                to: { group: popoutGroup, position: 'right' },
+            });
+            expect(grid2.api.location.type).toBe('popout');
+            dockview.setActivePanel(panel3);
+            dockview.activateNext();
+            expect(dockview.activeGroup).toBe(grid2.api.group);
+            dockview.activateNext();
+            expect(dockview.activeGroup).toBe(popoutGroup);
+
+            dockview.dispose();
+        });
+    });
+
     test('moveGroupOrPanel with skipSetActive should not activate group/panel', () => {
         const container = document.createElement('div');
 

@@ -7,6 +7,9 @@ import {
     ISerializedLeafNode,
     orthogonal,
     Gridview,
+    GridNode,
+    IGridView,
+    isGridBranchNode,
     SerializedGridview,
 } from '../gridview/gridview';
 import {
@@ -3697,9 +3700,10 @@ export class DockviewComponent
             }
         }
 
-        const location = getGridLocation(options.group.element);
-        const next = <DockviewGroupPanel>this.gridview.next(location)?.view;
-        this.doSetGroupAndPanelActive(next);
+        const next = this.activationTarget(options.group, false);
+        if (next) {
+            this.doSetGroupAndPanelActive(next);
+        }
     }
 
     activatePrevious(options: MovementOptions = {}): void {
@@ -3717,11 +3721,46 @@ export class DockviewComponent
             }
         }
 
-        const location = getGridLocation(options.group.element);
-        const next = this.gridview.previous(location)?.view;
+        const next = this.activationTarget(options.group, true);
         if (next) {
-            this.doSetGroupAndPanelActive(next as DockviewGroupPanel);
+            this.doSetGroupAndPanelActive(next);
         }
+    }
+
+    /**
+     * The group `activateNext` / `activatePrevious` lands on when leaving
+     * `group`. A group traverses the gridview that hosts it; a group hosted
+     * outside any gridview (edge) or alone in its floating / popout window
+     * falls through to the main grid's first / last visible leaf.
+     */
+    private activationTarget(
+        group: DockviewGroupPanel,
+        reverse: boolean
+    ): DockviewGroupPanel | undefined {
+        const gridview = this.getGridviewForGroup(group);
+
+        if (gridview.element.contains(group.element)) {
+            const location = getGridLocation(group.element);
+            const leaf = reverse
+                ? gridview.previous(location)
+                : gridview.next(location);
+            const next = leaf.view as DockviewGroupPanel;
+            if (gridview === this.gridview || next !== group) {
+                return next;
+            }
+        }
+
+        const leaves: DockviewGroupPanel[] = [];
+        const collect = (node: GridNode<IGridView>): void => {
+            if (isGridBranchNode(node)) {
+                node.children.forEach(collect);
+            } else {
+                leaves.push(node.view as DockviewGroupPanel);
+            }
+        };
+        collect(this.gridview.getView());
+        const visible = leaves.filter((leaf) => leaf.api.isVisible);
+        return visible[reverse ? visible.length - 1 : 0];
     }
 
     /**
