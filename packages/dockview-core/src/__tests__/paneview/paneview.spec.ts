@@ -185,4 +185,37 @@ describe('paneview', () => {
 
         expect(container.childNodes).toHaveLength(0);
     });
+    test('removePane rejects an out-of-range index', () => {
+        const paneview = new Paneview(container, {
+            orientation: Orientation.HORIZONTAL,
+        });
+
+        const makePanel = (id: string) =>
+            new TestPanel({
+                id,
+                component: 'component',
+                headerComponent: 'headerComponent',
+                orientation: Orientation.VERTICAL,
+                isExpanded: true,
+                isHeaderVisible: true,
+                headerSize: 22,
+                minimumBodySize: 0,
+                maximumBodySize: Number.MAX_SAFE_INTEGER,
+            });
+
+        const view1 = makePanel('id1');
+        const view2 = makePanel('id2');
+        paneview.addPane(view1);
+        paneview.addPane(view2);
+
+        const spy = jest.spyOn(view2, 'dispose');
+
+        expect(() => paneview.removePane(-1)).toThrow('Index out of bounds');
+        expect(() => paneview.removePane(2)).toThrow('Index out of bounds');
+
+        expect(paneview.getPanes()).toEqual([view1, view2]);
+        expect(spy).not.toHaveBeenCalled();
+
+        paneview.dispose();
+    });
 });

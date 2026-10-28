@@ -328,6 +328,13 @@ export class PaneviewComponent extends Resizable implements IPaneviewComponent {
     removePanel(panel: PaneviewPanel): void {
         const views = this.panels;
         const index = views.indexOf(panel);
+
+        // indexOf yields -1 for a stale or foreign reference; removePane(-1)
+        // would otherwise splice the last pane, so refuse like splitview does.
+        if (index < 0) {
+            throw new Error(`unknown paneview panel ${panel.id}`);
+        }
+
         this.paneview.removePane(index);
 
         this.doRemovePanel(panel);
