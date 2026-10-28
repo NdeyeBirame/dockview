@@ -235,13 +235,7 @@ export abstract class GridviewPanel<
                     this._maximumHeight = event.maximumHeight;
                 }
 
-                // Notify the containing view (LeafNode -> BranchNode) that this
-                // panel's constraints changed. Without this, a gridview
-                // BranchNode's cached aggregate minimum/maximum size would stay
-                // stale after `api.setConstraints(...)` until an unrelated
-                // add/remove/visibility/size event, and the parent splitview
-                // would not re-clamp the panel to the new bounds.
-                this._onDidChange.fire(undefined);
+                this.notifyConstraintsChanged();
             }),
             this.api.onDidSizeChange((event) => {
                 this._onDidChange.fire({
@@ -283,6 +277,15 @@ export abstract class GridviewPanel<
         if (typeof parameters.isVisible === 'boolean') {
             this.setVisible(parameters.isVisible);
         }
+    }
+
+    /**
+     * Tell the containing view (LeafNode -> BranchNode) that this panel's
+     * constraints changed: the branch's cached aggregate min/max over its
+     * children is stale and the parent splitview must re-clamp this panel.
+     */
+    protected notifyConstraintsChanged(): void {
+        this._onDidChange.fire(undefined);
     }
 
     private updateConstraints(): void {

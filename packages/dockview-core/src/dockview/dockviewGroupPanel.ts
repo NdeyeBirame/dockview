@@ -39,6 +39,10 @@ export class DockviewGroupPanel
     // Track explicitly set constraints to override panel constraints
     private readonly _explicitConstraints: Partial<Constraints> = {};
 
+    // the constraints the grid last saw; an active panel change that alters
+    // them must be announced or the grid keeps aggregating the old values
+    private _lastConstraints: Required<Constraints>;
+
     override get minimumWidth(): number {
         if (typeof this._explicitConstraints.minimumWidth === 'number') {
             return this._explicitConstraints.minimumWidth;
@@ -146,9 +150,12 @@ export class DockviewGroupPanel
             this
         );
 
+        this._lastConstraints = this.currentConstraints();
+
         this.addDisposables(
             this.model.onDidActivePanelChange((event) => {
                 this.api._onDidActivePanelChange.fire(event);
+                this.notifyIfConstraintsChanged();
             }),
             this.api.onDidConstraintsChangeInternal((event: any) => {
                 if (event.minimumWidth !== undefined) {
@@ -175,8 +182,36 @@ export class DockviewGroupPanel
                             ? event.maximumHeight()
                             : event.maximumHeight;
                 }
+                // GridviewPanel has already notified the grid of this change
+                this._lastConstraints = this.currentConstraints();
             })
         );
+    }
+
+    private currentConstraints(): Required<Constraints> {
+        return {
+            minimumWidth: this.minimumWidth,
+            maximumWidth: this.maximumWidth,
+            minimumHeight: this.minimumHeight,
+            maximumHeight: this.maximumHeight,
+        };
+    }
+
+    private notifyIfConstraintsChanged(): void {
+        const previous = this._lastConstraints;
+        const current = this.currentConstraints();
+
+        if (
+            previous.minimumWidth === current.minimumWidth &&
+            previous.maximumWidth === current.maximumWidth &&
+            previous.minimumHeight === current.minimumHeight &&
+            previous.maximumHeight === current.maximumHeight
+        ) {
+            return;
+        }
+
+        this._lastConstraints = current;
+        this.notifyConstraintsChanged();
     }
 
     override focus(): void {

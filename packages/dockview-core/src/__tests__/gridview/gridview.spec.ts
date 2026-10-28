@@ -1815,4 +1815,123 @@ describe('gridview', () => {
 
         subscription.dispose();
     });
+
+    /**
+     * A branch caches its aggregate min/max over its children. The cache is
+     * only honest if a change anywhere below the branch reaches it: hiding a
+     * leaf two levels down changes the nested branch's minimum, which is a
+     * term in every ancestor's aggregate.
+     */
+    describe('ancestor size caches follow nested changes', () => {
+        class ConstrainedView extends MockGridview {
+            private readonly _onDidChange = new Emitter<
+                IViewSize | undefined
+            >();
+            override onDidChange = this._onDidChange.event;
+
+            constructor(id: string, minimumHeight = 0) {
+                super(id);
+                this.minimumHeight = minimumHeight;
+            }
+
+            setMinimumHeight(value: number): void {
+                this.minimumHeight = value;
+                this._onDidChange.fire(undefined);
+            }
+        }
+
+        /**
+         * root V [ T, GP = H [ P = V [ L1(minH 300), L2(minH 300) ], Y ] ]
+         */
+        function createNestedGrid() {
+            const gridview = new Gridview(
+                false,
+                { separatorBorder: '' },
+                Orientation.VERTICAL
+            );
+            gridview.layout(1000, 1000);
+
+            const t = new ConstrainedView('T');
+            const y = new ConstrainedView('Y');
+            const l1 = new ConstrainedView('L1', 300);
+            const l2 = new ConstrainedView('L2', 300);
+
+            gridview.addView(t, Sizing.Distribute, [0]);
+            gridview.addView(y, Sizing.Distribute, [1]);
+            // splits Y's slot into GP = H [ L1, Y ]
+            gridview.addView(l1, Sizing.Distribute, [1, 0]);
+            // splits L1's slot into P = V [ L1, L2 ]
+            gridview.addView(l2, Sizing.Distribute, [1, 0, 1]);
+
+            expect(getGridLocation(l2.element)).toEqual([1, 0, 1]);
+            expect(gridview.minimumHeight).toBe(600);
+
+            return { gridview, t, y, l1, l2 };
+        }
+
+        test('hiding and showing a leaf two levels down updates the root minimum', () => {
+            const { gridview } = createNestedGrid();
+
+            gridview.setViewVisible([1, 0, 1], false);
+            expect(gridview.minimumHeight).toBe(300);
+
+            gridview.setViewVisible([1, 0, 1], true);
+            expect(gridview.minimumHeight).toBe(600);
+
+            gridview.dispose();
+        });
+
+        test('the root splitview clamps a nested branch to its live minimum, not the stale one', () => {
+            const { gridview, y } = createNestedGrid();
+
+            gridview.setViewVisible([1, 0, 1], false);
+
+            // GP's live minimum height is 300 (only L1 is visible inside P):
+            // laid out at 400 the root must give GP 300, not the stale 600
+            gridview.layout(1000, 400);
+            expect(y.height).toBe(300);
+
+            gridview.dispose();
+        });
+
+        test('a constraint change on a leaf two levels down updates the root minimum', () => {
+            const { gridview, l1 } = createNestedGrid();
+
+            l1.setMinimumHeight(500);
+            expect(gridview.minimumHeight).toBe(800);
+
+            l1.setMinimumHeight(300);
+            expect(gridview.minimumHeight).toBe(600);
+
+            gridview.dispose();
+        });
+
+        test('adding and removing a leaf inside a nested branch updates the root minimum', () => {
+            const { gridview } = createNestedGrid();
+
+            const l3 = new ConstrainedView('L3', 300);
+            gridview.addView(l3, Sizing.Distribute, [1, 0, 2]);
+            expect(gridview.minimumHeight).toBe(900);
+
+            gridview.removeView([1, 0, 2]);
+            expect(gridview.minimumHeight).toBe(600);
+
+            gridview.dispose();
+        });
+
+        test('hiding every child of a nested branch hides the branch and drops it from the root minimum', () => {
+            const { gridview } = createNestedGrid();
+
+            gridview.setViewVisible([1, 0, 0], false);
+            gridview.setViewVisible([1, 0, 1], false);
+            expect(gridview.isViewVisible([1, 0])).toBe(false);
+            expect(gridview.minimumHeight).toBe(0);
+
+            gridview.setViewVisible([1, 0, 0], true);
+            expect(gridview.isViewVisible([1, 0])).toBe(true);
+            expect(gridview.minimumHeight).toBe(300);
+
+            gridview.dispose();
+        });
+    });
 });
