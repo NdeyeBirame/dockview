@@ -132,14 +132,12 @@ export class DockviewPanelApiImpl
     }
 
     set group(value: DockviewGroupPanel) {
-        const oldGroup = this._group;
-
         if (this._group !== value) {
             this._group = value;
 
             this._onDidGroupChange.fire({});
 
-            this.setupGroupEventListeners(oldGroup);
+            this.setupGroupEventListeners();
 
             this.fireLocationChange();
         }
@@ -260,8 +258,11 @@ export class DockviewPanelApiImpl
         });
     }
 
-    private setupGroupEventListeners(previousGroup?: DockviewGroupPanel) {
-        let _trackGroupActive = previousGroup?.isActive ?? false; // prevent duplicate events with same state
+    private setupGroupEventListeners() {
+        // Seeded from the group the panel is now in: an already-active group
+        // never re-fires its active state, so a tracker seeded from anything
+        // else swallows the next real change.
+        let _trackGroupActive = this.isGroupActive;
 
         this.groupEventsDisposable.value = new CompositeDisposable(
             this.group.api.onDidVisibilityChange((event) => {
