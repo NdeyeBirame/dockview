@@ -670,47 +670,26 @@ export class Tabs extends CompositeDisposable implements ITabReorderHost {
                         return;
                     }
 
-                    const insertionIndex =
-                        animState.currentInsertionIndex as number;
-                    const sourceIndex = animState.sourceIndex;
-                    const adjustedIndex =
-                        insertionIndex -
-                        (sourceIndex !== -1 && sourceIndex < insertionIndex
-                            ? 1
-                            : 0);
-
-                    const sourceCurrentGroup =
-                        this.group.model.getTabGroupForPanel(
-                            animState.sourceTabId
-                        );
-                    if (
-                        adjustedIndex === sourceIndex &&
-                        !animState.targetTabGroupId &&
-                        !sourceCurrentGroup
-                    ) {
-                        this._reorder.uncollapseSourceTab(
-                            animState.sourceTabId
-                        );
+                    // Shared with the pointer backend's commit so both
+                    // resolve the slot and its tab group the same way.
+                    const drop = this._reorder.resolveTabDrop(animState);
+                    this._reorder.uncollapseSourceTab(animState.sourceTabId);
+                    if (!drop) {
                         this.resetTabTransforms();
                         return;
                     }
 
-                    this._reorder.uncollapseSourceTab(animState.sourceTabId);
-
+                    const sourceIndex = animState.sourceIndex;
                     const firstPositions = this.snapshotTabPositions();
                     this.resetTabTransforms();
-                    this._onDrop.fire({
-                        event,
-                        index: adjustedIndex,
-                        targetTabGroupId: animState.targetTabGroupId,
-                    });
+                    this._onDrop.fire({ event, ...drop });
                     this.runFlipAnimation(
                         firstPositions,
                         animState.sourceTabId,
-                        animState.sourceIndex === -1,
+                        sourceIndex === -1,
                         {
-                            from: Math.min(sourceIndex, adjustedIndex),
-                            to: Math.max(sourceIndex, adjustedIndex),
+                            from: Math.min(sourceIndex, drop.index),
+                            to: Math.max(sourceIndex, drop.index),
                         }
                     );
                 },
