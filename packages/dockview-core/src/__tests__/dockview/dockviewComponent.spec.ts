@@ -11563,6 +11563,237 @@ describe('dockviewComponent', () => {
             expect(panel1.group).toBe(panel2.group);
         });
 
+        describe('active flags across moves and adds', () => {
+            function create() {
+                const dockview = new DockviewComponent(
+                    document.createElement('div'),
+                    {
+                        createComponent(options) {
+                            return new PanelContentPartTest(
+                                options.id,
+                                options.name
+                            );
+                        },
+                    }
+                );
+                dockview.layout(1000, 1000);
+                return dockview;
+            }
+
+            function recordActive(panels: IDockviewPanel[]) {
+                const events: Record<string, boolean[]> = {};
+                for (const panel of panels) {
+                    events[panel.id] = [];
+                    panel.api.onDidActiveChange((e) =>
+                        events[panel.id].push(e.isActive)
+                    );
+                }
+                return events;
+            }
+
+            /**
+             * [p1, p3] in the active group with p1 active, p2 alone in an
+             * inactive group to the right.
+             */
+            function arrangeMove(dockview: DockviewComponent) {
+                const p1 = dockview.addPanel({
+                    id: 'p1',
+                    component: 'default',
+                });
+                const p2 = dockview.addPanel({
+                    id: 'p2',
+                    component: 'default',
+                    position: { referencePanel: 'p1', direction: 'right' },
+                });
+                const p3 = dockview.addPanel({
+                    id: 'p3',
+                    component: 'default',
+                    position: { referencePanel: 'p1' },
+                });
+                p1.api.setActive();
+
+                expect(dockview.activeGroup).toBe(p1.group);
+                expect(p1.group).toBe(p3.group);
+                expect(p1.group).not.toBe(p2.group);
+                expect(p1.api.isActive).toBe(true);
+                expect(p2.api.isActive).toBe(false);
+                expect(p3.api.isActive).toBe(false);
+
+                return { p1, p2, p3 };
+            }
+
+            test('moveTo with skipSetActive clears the moved panel active flag', () => {
+                const dockview = create();
+                const { p1, p2, p3 } = arrangeMove(dockview);
+                const events = recordActive([p1, p2, p3]);
+
+                p1.api.moveTo({
+                    group: p2.group,
+                    position: 'center',
+                    skipSetActive: true,
+                });
+
+                // the destination keeps its active panel and stays inactive
+                expect(p1.group).toBe(p2.group);
+                expect(p2.group.activePanel).toBe(p2);
+                expect(dockview.activeGroup).toBe(p3.group);
+                expect(dockview.activePanel).toBe(p3);
+
+                // the moved panel is neither visible nor active; the flags
+                // must agree
+                expect(p1.api.isVisible).toBe(false);
+                expect(p1.api.isActive).toBe(false);
+                expect(p3.api.isActive).toBe(true);
+                // p2 heads an inactive group, so it is not active either
+                expect(p2.api.isActive).toBe(false);
+
+                expect(events).toEqual({ p1: [false], p2: [], p3: [true] });
+            });
+
+            test('moveTo without skipSetActive activates the moved panel in the destination', () => {
+                const dockview = create();
+                const { p1, p2, p3 } = arrangeMove(dockview);
+                const events = recordActive([p1, p2, p3]);
+
+                p1.api.moveTo({ group: p2.group, position: 'center' });
+
+                expect(p1.group).toBe(p2.group);
+                expect(dockview.activeGroup).toBe(p2.group);
+                expect(dockview.activePanel).toBe(p1);
+
+                expect(p1.api.isActive).toBe(true);
+                expect(p1.api.isVisible).toBe(true);
+                expect(p2.api.isActive).toBe(false);
+                expect(p3.api.isActive).toBe(false);
+
+                // p1 is re-homed before its new group is activated, and p3
+                // heads the source group until that group loses activation
+                expect(events).toEqual({
+                    p1: [false, true],
+                    p2: [],
+                    p3: [true, false],
+                });
+            });
+
+            test('panel added to the already-active group reports that group deactivating', () => {
+                const dockview = create();
+                const p1 = dockview.addPanel({
+                    id: 'p1',
+                    component: 'default',
+                });
+                const p2 = dockview.addPanel({
+                    id: 'p2',
+                    component: 'default',
+                    position: { referencePanel: 'p1', direction: 'right' },
+                });
+                expect(dockview.activeGroup).toBe(p2.group);
+
+                const p3 = dockview.addPanel({
+                    id: 'p3',
+                    component: 'default',
+                    position: { referencePanel: 'p2' },
+                });
+                expect(p3.group).toBe(p2.group);
+                expect(p3.api.isGroupActive).toBe(true);
+
+                const events: boolean[] = [];
+                p3.api.onDidActiveGroupChange((e) => events.push(e.isActive));
+
+                dockview.doSetGroupActive(p1.group);
+                expect(p3.api.isGroupActive).toBe(false);
+                expect(events).toEqual([false]);
+
+                dockview.doSetGroupActive(p2.group);
+                expect(p3.api.isGroupActive).toBe(true);
+                expect(events).toEqual([false, true]);
+            });
+
+            test('panel moved into the already-active group with skipSetActive reports that group deactivating', () => {
+                const dockview = create();
+                const p0 = dockview.addPanel({
+                    id: 'p0',
+                    component: 'default',
+                });
+                const p1 = dockview.addPanel({
+                    id: 'p1',
+                    component: 'default',
+                    position: { referencePanel: 'p0', direction: 'right' },
+                });
+                const p2 = dockview.addPanel({
+                    id: 'p2',
+                    component: 'default',
+                    position: { referencePanel: 'p1', direction: 'right' },
+                });
+                expect(dockview.activeGroup).toBe(p2.group);
+                expect(p1.api.isGroupActive).toBe(false);
+
+                const events: boolean[] = [];
+                p1.api.onDidActiveGroupChange((e) => events.push(e.isActive));
+
+                p1.api.moveTo({
+                    group: p2.group,
+                    position: 'center',
+                    skipSetActive: true,
+                });
+                expect(p1.group).toBe(p2.group);
+                expect(dockview.activeGroup).toBe(p2.group);
+                expect(p1.api.isGroupActive).toBe(true);
+                // the destination was already active, so its state never
+                // re-fired; the tracker must still be seeded from it
+                expect(events).toEqual([]);
+
+                dockview.doSetGroupActive(p0.group);
+                expect(p1.api.isGroupActive).toBe(false);
+                expect(events).toEqual([false]);
+
+                dockview.doSetGroupActive(p2.group);
+                expect(p1.api.isGroupActive).toBe(true);
+                expect(events).toEqual([false, true]);
+            });
+
+            test('panel moved into a group that is then activated keeps tracking that group', () => {
+                const dockview = create();
+                const p0 = dockview.addPanel({
+                    id: 'p0',
+                    component: 'default',
+                });
+                const p1 = dockview.addPanel({
+                    id: 'p1',
+                    component: 'default',
+                    position: { referencePanel: 'p0', direction: 'right' },
+                });
+                const p2 = dockview.addPanel({
+                    id: 'p2',
+                    component: 'default',
+                    position: { referencePanel: 'p1', direction: 'right' },
+                });
+                dockview.doSetGroupActive(p1.group);
+                expect(p1.api.isGroupActive).toBe(true);
+                const sourceGroup = p1.group;
+
+                const events: boolean[] = [];
+                p1.api.onDidActiveGroupChange((e) => events.push(e.isActive));
+
+                p1.api.moveTo({ group: p2.group, position: 'center' });
+                expect(p1.group).toBe(p2.group);
+                expect(dockview.activeGroup).toBe(p2.group);
+                expect(p1.api.isGroupActive).toBe(true);
+                // the tracker is seeded from the destination group, which was
+                // inactive when p1 arrived, so its activation is reported
+                expect(events).toEqual([true]);
+                // the emptied source group is gone
+                expect(dockview.groups).not.toContain(sourceGroup);
+
+                dockview.doSetGroupActive(p0.group);
+                expect(p1.api.isGroupActive).toBe(false);
+                expect(events).toEqual([true, false]);
+
+                dockview.doSetGroupActive(p1.group);
+                expect(p1.api.isGroupActive).toBe(true);
+                expect(events).toEqual([true, false, true]);
+            });
+        });
+
         test('that can add panel', () => {
             const container = document.createElement('div');
 

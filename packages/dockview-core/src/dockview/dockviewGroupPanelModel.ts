@@ -1537,6 +1537,10 @@ export class DockviewGroupPanelModel
 
         if (!options.skipSetActive) {
             this.updateContainer();
+        } else {
+            // `skipSetActive` leaves the group's active panel alone; it must
+            // not leave a panel that is not that active panel flagged active.
+            panel.runEvents();
         }
     }
 
