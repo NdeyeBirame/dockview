@@ -196,12 +196,18 @@ export class SplitviewComponent
             this._classNames.setClassNames(options.className ?? '');
         }
 
-        if ('disableResizing' in options) {
+        if ('disableAutoResizing' in options) {
             this.disableResizing = options.disableAutoResizing ?? false;
         }
 
         if (typeof options.orientation === 'string') {
-            this.splitview.orientation = options.orientation!;
+            this.splitview.orientation = options.orientation;
+            // each panel maps (size, orthogonalSize) to (width, height) from
+            // its own orientation, so it must follow the splitview's before
+            // the relayout below
+            for (const panel of this.panels) {
+                panel.orientation = options.orientation;
+            }
         }
 
         this._options = { ...this.options, ...options };

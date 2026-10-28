@@ -789,4 +789,93 @@ describe('componentSplitview', () => {
         disposable.dispose();
         splitview.dispose();
     });
+
+    describe('updateOptions', () => {
+        function createCut(orientation: Orientation): SplitviewComponent {
+            return new SplitviewComponent(container, {
+                orientation,
+                createComponent: (options) => {
+                    switch (options.name) {
+                        case 'default':
+                            return new TestPanel(options.id, options.name);
+                        default:
+                            throw new Error('unsupported');
+                    }
+                },
+            });
+        }
+
+        test('switching orientation re-lays out panels in the new orientation', () => {
+            const splitview = createCut(Orientation.HORIZONTAL);
+            const api = new SplitviewApi(splitview);
+
+            splitview.layout(800, 200);
+
+            const panel1 = splitview.addPanel({
+                id: 'panel1',
+                component: 'default',
+            });
+            const panel2 = splitview.addPanel({
+                id: 'panel2',
+                component: 'default',
+            });
+
+            expect(api.orientation).toBe(Orientation.HORIZONTAL);
+            expect(panel1.api.width).toBe(400);
+            expect(panel1.api.height).toBe(200);
+            expect(panel2.api.width).toBe(400);
+            expect(panel2.api.height).toBe(200);
+
+            splitview.updateOptions({ orientation: Orientation.VERTICAL });
+
+            // the component keeps its box; panels now stack vertically
+            expect(api.orientation).toBe(Orientation.VERTICAL);
+            expect(api.width).toBe(800);
+            expect(api.height).toBe(200);
+            expect(panel1.api.width).toBe(800);
+            expect(panel1.api.height).toBe(100);
+            expect(panel2.api.width).toBe(800);
+            expect(panel2.api.height).toBe(100);
+
+            splitview.updateOptions({ orientation: Orientation.HORIZONTAL });
+
+            expect(api.orientation).toBe(Orientation.HORIZONTAL);
+            expect(api.width).toBe(800);
+            expect(api.height).toBe(200);
+            expect(panel1.api.width).toBe(400);
+            expect(panel1.api.height).toBe(200);
+            expect(panel2.api.width).toBe(400);
+            expect(panel2.api.height).toBe(200);
+
+            splitview.dispose();
+        });
+
+        test('updates disableResizing when disableAutoResizing is provided', () => {
+            const splitview = createCut(Orientation.HORIZONTAL);
+            expect(splitview.disableResizing).toBe(false);
+
+            // The real option key is `disableAutoResizing`; providing it must
+            // update `disableResizing` (regression guard: the guard previously
+            // checked a non-existent `disableResizing` key and never fired).
+            splitview.updateOptions({ disableAutoResizing: true });
+            expect(splitview.disableResizing).toBe(true);
+
+            splitview.updateOptions({ disableAutoResizing: false });
+            expect(splitview.disableResizing).toBe(false);
+
+            splitview.dispose();
+        });
+
+        test('leaves disableResizing unchanged when the option is omitted', () => {
+            const splitview = createCut(Orientation.HORIZONTAL);
+            splitview.updateOptions({ disableAutoResizing: true });
+            expect(splitview.disableResizing).toBe(true);
+
+            // An unrelated update must not reset it.
+            splitview.updateOptions({ className: 'unrelated' });
+            expect(splitview.disableResizing).toBe(true);
+
+            splitview.dispose();
+        });
+    });
 });
