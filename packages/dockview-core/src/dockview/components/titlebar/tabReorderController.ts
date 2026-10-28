@@ -336,6 +336,34 @@ export class TabReorderController extends CompositeDisposable {
         return !!el && this._tabsList.contains(el);
     }
 
+    /**
+     * Resolve a single-tab drop from its anim state: the list index adjusted
+     * for the source's own slot, and the tab group that slot falls in. Null
+     * when the drop changes neither position nor group membership; a drop at
+     * the source's own slot still commits when it joins or leaves a group.
+     */
+    resolveTabDrop(
+        animState: TabAnimationState
+    ): { index: number; targetTabGroupId: string | null } | null {
+        const insertionIndex = animState.currentInsertionIndex;
+        if (insertionIndex === null) {
+            return null;
+        }
+        const { sourceIndex, targetTabGroupId } = animState;
+        const index =
+            insertionIndex -
+            (sourceIndex !== -1 && sourceIndex < insertionIndex ? 1 : 0);
+
+        if (
+            index === sourceIndex &&
+            !targetTabGroupId &&
+            !this.group.model.getTabGroupForPanel(animState.sourceTabId)
+        ) {
+            return null;
+        }
+        return { index, targetTabGroupId };
+    }
+
     /** Commit a smooth-mode intra-group reorder from the current insertion
      *  index (adjusted for the source's own position), then clear drag state.
      *  Used by the pointer backend for both single-row and wrap layouts. */
@@ -344,24 +372,19 @@ export class TabReorderController extends CompositeDisposable {
         if (animState?.currentInsertionIndex == null) {
             return;
         }
-        const insertionIndex = animState.currentInsertionIndex;
-        const sourceIndex = animState.sourceIndex;
-        const adjustedIndex =
-            insertionIndex -
-            (sourceIndex !== -1 && sourceIndex < insertionIndex ? 1 : 0);
+        // Same resolution as the HTML5 `drop` handler in `Tabs`: the model
+        // re-attaches a moved panel to the group named here, so a null target
+        // ejects a grouped tab and never joins an ungrouped one.
+        const drop = this.resolveTabDrop(animState);
 
         this._animState = null;
         this.clearWrapDropIndicator();
         this.uncollapseSourceTab(animState.sourceTabId);
 
-        if (adjustedIndex === sourceIndex) {
+        if (!drop) {
             return;
         }
-        this.host.fireDrop({
-            event,
-            index: adjustedIndex,
-            targetTabGroupId: null,
-        });
+        this.host.fireDrop({ event, ...drop });
     }
 
     /**

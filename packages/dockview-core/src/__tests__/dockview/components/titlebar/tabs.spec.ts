@@ -421,6 +421,71 @@ describe('tabs', () => {
             fireEvent.drop(tabsList);
             expect(drops).toHaveLength(1);
         });
+        test('dropping the source tab back at its own slot fires no drop', () => {
+            const accessor = fromPartial<DockviewComponent>({
+                id: 'test-accessor-id',
+                options: {
+                    theme: {
+                        name: 'test',
+                        className: 'test',
+                        tabAnimation: 'smooth',
+                    },
+                },
+                onDidOptionsChange: jest
+                    .fn()
+                    .mockReturnValue({ dispose: jest.fn() }),
+            });
+            const group = fromPartial<DockviewGroupPanel>({
+                id: 'test-group-id',
+                locked: false,
+                model: fromPartial({
+                    canDisplayOverlay: jest.fn().mockReturnValue(true),
+                    dropTargetContainer: undefined,
+                    getTabGroupForPanel: jest.fn().mockReturnValue(null),
+                }),
+            });
+            const tabs = new Tabs(group, accessor, {
+                showTabsOverflowControl: false,
+            });
+
+            tabs.openPanel(createMockPanel('panel-a'), 0);
+            tabs.openPanel(createMockPanel('panel-b'), 1);
+
+            LocalSelectionTransfer.getInstance<PanelTransfer>().setData(
+                [
+                    new PanelTransfer(
+                        'test-accessor-id',
+                        'test-group-id',
+                        'panel-a'
+                    ),
+                ],
+                PanelTransfer.prototype
+            );
+
+            // Insertion slot 0 is panel-a's own slot and it is ungrouped.
+            (tabs as any)._animState = {
+                sourceTabId: 'panel-a',
+                sourceIndex: 0,
+                tabPositions: (tabs as any).snapshotTabPositions(),
+                chipSizes: new Map(),
+                currentInsertionIndex: 0,
+                targetTabGroupId: null,
+                sourceTabGroupId: null,
+                sourceGroupPanelIds: null,
+                sourceChipSize: 0,
+                cursorOffsetFromDragStart: 0,
+                sourceGapSize: 0,
+                containerStart: 0,
+            };
+
+            const drops: TabDropIndexEvent[] = [];
+            tabs.onDrop((e) => drops.push(e));
+
+            fireEvent.drop((tabs as any)._tabsList as HTMLElement);
+
+            expect(drops).toHaveLength(0);
+            expect((tabs as any)._animState).toBeNull();
+        });
     });
 
     describe('tab drop index', () => {
