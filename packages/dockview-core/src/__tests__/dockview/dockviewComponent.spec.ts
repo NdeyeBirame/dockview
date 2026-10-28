@@ -7198,6 +7198,109 @@ describe('dockviewComponent', () => {
                 },
             });
 
+        test('addFloatingGroup keeps the requested position when the container has no layout', () => {
+            // jsdom never lays out, so every rect is 0x0 - as in a browser
+            // when the dockview sits in a hidden tab.
+            const dockview = createDockview();
+            dockview.layout(1000, 500);
+
+            const panel = dockview.addPanel({
+                id: 'panel_1',
+                component: 'default',
+            });
+
+            dockview.addFloatingGroup(panel, {
+                position: { left: 120, top: 80 },
+                width: 300,
+                height: 200,
+            });
+
+            const overlay = dockview.floatingGroups[0].overlay.element;
+            expect(overlay.style.left).toBe('120px');
+            expect(overlay.style.top).toBe('80px');
+
+            expect(dockview.toJSON().floatingGroups![0].position).toEqual({
+                left: 120,
+                top: 80,
+                width: 300,
+                height: 200,
+            });
+
+            dockview.dispose();
+        });
+
+        test('fromJSON preserves floating group coordinates when the container has no layout', () => {
+            const position = { left: 120, top: 80, width: 300, height: 200 };
+
+            const dockview = createDockview();
+            dockview.layout(1000, 500);
+
+            dockview.fromJSON({
+                grid: {
+                    root: {
+                        type: 'branch',
+                        data: [
+                            {
+                                type: 'leaf',
+                                data: {
+                                    views: ['panel_1'],
+                                    activeView: 'panel_1',
+                                    id: '1',
+                                },
+                                size: 1000,
+                            },
+                        ],
+                        size: 500,
+                    },
+                    width: 1000,
+                    height: 500,
+                    orientation: Orientation.HORIZONTAL,
+                },
+                floatingGroups: [
+                    {
+                        data: {
+                            views: ['panel_2'],
+                            activeView: 'panel_2',
+                            id: '2',
+                        },
+                        position,
+                    },
+                ],
+                panels: {
+                    panel_1: {
+                        id: 'panel_1',
+                        contentComponent: 'default',
+                        title: 'Panel 1',
+                    },
+                    panel_2: {
+                        id: 'panel_2',
+                        contentComponent: 'default',
+                        title: 'Panel 2',
+                    },
+                },
+                activeGroup: '1',
+            });
+
+            expect(dockview.floatingGroups).toHaveLength(1);
+            const overlay = dockview.floatingGroups[0].overlay.element;
+            expect(overlay.style.left).toBe('120px');
+            expect(overlay.style.top).toBe('80px');
+
+            // round-trip: what is persisted is what was restored
+            const json = dockview.toJSON();
+            expect(json.floatingGroups![0].position).toEqual(position);
+
+            const restored = createDockview();
+            restored.layout(1000, 500);
+            restored.fromJSON(json);
+            expect(restored.toJSON().floatingGroups![0].position).toEqual(
+                position
+            );
+
+            dockview.dispose();
+            restored.dispose();
+        });
+
         test('renders a dedicated title bar by default', () => {
             const dockview = createDockview();
             dockview.layout(1000, 500);
