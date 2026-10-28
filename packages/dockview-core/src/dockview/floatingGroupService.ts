@@ -10,13 +10,14 @@ import { DockviewOptions } from './options';
 import { SerializedFloatingGroup } from './dockviewComponent';
 import { GroupPanelViewState } from './dockviewGroupPanelModel';
 import { defineModule } from './modules';
+import { LayoutChangeReason } from '../types';
 
 /**
  * Narrow callback surface the FloatingGroupService needs from its host
  * component. Keeps the service decoupled from DockviewComponent.
  */
 export interface IFloatingGroupHost {
-    fireLayoutChange(): void;
+    fireLayoutChange(reason: LayoutChangeReason): void;
 }
 
 export interface IFloatingGroupService extends IDisposable {
@@ -110,7 +111,8 @@ export class FloatingGroupService implements IFloatingGroupService {
                 gridview.layout(gridview.width, gridview.height);
             }),
             overlay.onDidChangeEnd(() => {
-                this._host.fireLayoutChange();
+                // the floating group was moved or resized
+                this._host.fireLayoutChange('geometry');
             }),
             group.onDidChange((event) => {
                 // `event.height` is the group's requested *content* height.

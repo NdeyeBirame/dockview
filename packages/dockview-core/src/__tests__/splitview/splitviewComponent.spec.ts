@@ -1,3 +1,5 @@
+import { fireEvent } from '@testing-library/dom';
+import { SplitviewApi } from '../../api/component.api';
 import { PanelDimensionChangeEvent } from '../../api/panelApi';
 import { Emitter } from '../../events';
 import { CompositeDisposable } from '../../lifecycle';
@@ -739,5 +741,52 @@ describe('componentSplitview', () => {
         splitview.updateOptions({ className: 'test-b test-c' });
 
         expect(splitview.element.className).toBe('test-b test-c');
+    });
+
+    test('onDidLayoutChange carries a geometry reason when a sash drag ends', () => {
+        const splitview = new SplitviewComponent(container, {
+            orientation: Orientation.HORIZONTAL,
+            createComponent: (options) => {
+                switch (options.name) {
+                    case 'default':
+                        return new TestPanel(options.id, options.name);
+                    default:
+                        throw new Error('unsupported');
+                }
+            },
+        });
+        splitview.layout(400, 400);
+        splitview.addPanel({ id: 'panel1', component: 'default' });
+        splitview.addPanel({ id: 'panel2', component: 'default' });
+        const api = new SplitviewApi(splitview);
+
+        const pings: string[][] = [];
+        const disposable = api.onDidLayoutChange((e) =>
+            pings.push([...e.reasons].sort())
+        );
+
+        const sash = container
+            .getElementsByClassName('dv-sash')
+            .item(0) as HTMLElement;
+        expect(sash).toBeTruthy();
+
+        fireEvent(
+            sash,
+            new MouseEvent('pointerdown', { clientX: 200, clientY: 100 })
+        );
+        fireEvent(
+            document,
+            new MouseEvent('pointermove', { clientX: 220, clientY: 100 })
+        );
+        expect(pings).toHaveLength(0); // nothing until the drag ends
+        fireEvent(
+            document,
+            new MouseEvent('pointerup', { clientX: 220, clientY: 100 })
+        );
+
+        expect(pings).toEqual([['geometry']]);
+
+        disposable.dispose();
+        splitview.dispose();
     });
 });

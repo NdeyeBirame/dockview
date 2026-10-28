@@ -58,6 +58,7 @@ import {
     IDockviewGroupPanel,
 } from '../dockview/dockviewGroupPanel';
 import { Event } from '../events';
+import { LayoutChangeEvent } from '../types';
 import {
     LayoutHistoryChangeEvent,
     SmartGuidesSnapEvent,
@@ -96,7 +97,7 @@ import { DockviewGroupPanelApi } from './dockviewGroupPanelApi';
 export interface CommonApi<T = any> {
     readonly height: number;
     readonly width: number;
-    readonly onDidLayoutChange: Event<void>;
+    readonly onDidLayoutChange: Event<LayoutChangeEvent>;
     readonly onDidLayoutFromJSON: Event<void>;
     focus(): void;
     layout(width: number, height: number): void;
@@ -165,8 +166,9 @@ export class SplitviewApi implements CommonApi<SerializedSplitview> {
     /**
      * Invoked whenever any aspect of the layout changes.
      * If listening to this event it may be worth debouncing ouputs.
+     * The event carries the `reasons` for the change.
      */
-    get onDidLayoutChange(): Event<void> {
+    get onDidLayoutChange(): Event<LayoutChangeEvent> {
         return this.component.onDidLayoutChange;
     }
 
@@ -303,8 +305,9 @@ export class PaneviewApi implements CommonApi<SerializedPaneview> {
 
     /**
      * Invoked when any layout change occures, an aggregation of many events.
+     * The event carries the `reasons` for the change.
      */
-    get onDidLayoutChange(): Event<void> {
+    get onDidLayoutChange(): Event<LayoutChangeEvent> {
         return this.component.onDidLayoutChange;
     }
 
@@ -467,8 +470,9 @@ export class GridviewApi implements CommonApi<SerializedGridviewComponent> {
 
     /**
      * Invoked when any layout change occures, an aggregation of many events.
+     * The event carries the `reasons` for the change.
      */
-    get onDidLayoutChange(): Event<void> {
+    get onDidLayoutChange(): Event<LayoutChangeEvent> {
         return this.component.onDidLayoutChange;
     }
 
@@ -743,8 +747,9 @@ export class DockviewApi implements CommonApi<SerializedDockview> {
 
     /**
      * Invoked when any layout change occures, an aggregation of many events.
+     * The event carries the `reasons` for the change.
      */
-    get onDidLayoutChange(): Event<void> {
+    get onDidLayoutChange(): Event<LayoutChangeEvent> {
         return this.component.onDidLayoutChange;
     }
 
