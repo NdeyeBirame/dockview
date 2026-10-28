@@ -1,7 +1,6 @@
 import {
     AcceptableEvent,
     AsapEvent,
-    AsapReasonEvent,
     DockviewEvent,
     Emitter,
     Event,
@@ -683,17 +682,17 @@ describe('events', () => {
         });
     });
 
-    describe('AsapReasonEvent', () => {
+    describe('AsapEvent with a payload', () => {
         beforeEach(() => {
             jest.useRealTimers();
         });
 
         it('delivers the union of the reasons fired in one task, once', async () => {
-            const event = new AsapReasonEvent<'a' | 'b' | 'c'>();
+            const event = new AsapEvent<'a' | 'b' | 'c'>();
 
             const received: string[][] = [];
             const disposable = event.onEvent((e) => {
-                received.push([...e.reasons].sort());
+                received.push([...e].sort());
             });
 
             event.fire('a');
@@ -711,11 +710,11 @@ describe('events', () => {
         });
 
         it('starts a fresh set of reasons for the next task', async () => {
-            const event = new AsapReasonEvent<'a' | 'b'>();
+            const event = new AsapEvent<'a' | 'b'>();
 
             const received: string[][] = [];
             const disposable = event.onEvent((e) => {
-                received.push([...e.reasons].sort());
+                received.push([...e].sort());
             });
 
             event.fire('a');
@@ -730,7 +729,7 @@ describe('events', () => {
         });
 
         it('does not dispatch to a listener subscribed after the fire', async () => {
-            const event = new AsapReasonEvent<'a'>();
+            const event = new AsapEvent<'a'>();
 
             let early = 0;
             let late = 0;
@@ -751,7 +750,7 @@ describe('events', () => {
         });
 
         it('dispose tears down the underlying emitter', async () => {
-            const event = new AsapReasonEvent<'a'>();
+            const event = new AsapEvent<'a'>();
 
             let count = 0;
             event.onEvent(() => {

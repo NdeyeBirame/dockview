@@ -1,4 +1,4 @@
-import { Emitter, Event, AsapEvent, AsapReasonEvent } from '../events';
+import { Emitter, Event, AsapEvent } from '../events';
 import { LayoutChangeEvent, LayoutChangeReason } from '../types';
 import { getGridLocation, Gridview, IGridView } from './gridview';
 import { Position } from '../dnd/droptarget';
@@ -105,9 +105,11 @@ export abstract class BaseGrid<T extends IGridPanelView>
         this._onDidActiveChange.event;
 
     protected readonly _bufferOnDidLayoutChange =
-        new AsapReasonEvent<LayoutChangeReason>();
-    readonly onDidLayoutChange: Event<LayoutChangeEvent> =
-        this._bufferOnDidLayoutChange.onEvent;
+        new AsapEvent<LayoutChangeReason>();
+    readonly onDidLayoutChange: Event<LayoutChangeEvent> = Event.map(
+        this._bufferOnDidLayoutChange.onEvent,
+        (reasons) => ({ reasons })
+    );
 
     private readonly _onDidViewVisibilityChangeMicroTaskQueue = new AsapEvent();
     readonly onDidViewVisibilityChangeMicroTaskQueue =
