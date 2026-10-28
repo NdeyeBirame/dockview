@@ -236,6 +236,37 @@ describe('tabs - pointer reorder with tab groups', () => {
         expect(group.model.getTabGroupForPanel('p1')).toBeUndefined();
     });
 
+    test('an ungrouped tab released at its own slot fires no drop', () => {
+        // Strip: [p1][p2][p3], no groups. Releasing p2 where it started
+        // neither moves it nor changes membership, so nothing commits.
+        const group = addPanels(['p1', 'p2', 'p3']);
+        layoutStrip(group);
+
+        const drops: TabDropIndexEvent[] = [];
+        (group.model as any).tabsContainer.onDrop((e: TabDropIndexEvent) =>
+            drops.push(e)
+        );
+
+        pointerDrag(tabElement(group, 'p2'), 150, 150);
+
+        expect(drops).toHaveLength(0);
+        expect(panelIds(group)).toEqual(['p1', 'p2', 'p3']);
+    });
+
+    test('resolveTabDrop is null without an insertion index', () => {
+        const group = addPanels(['p1', 'p2']);
+        const reorder = (group.model as any).tabsContainer.tabs._reorder;
+
+        expect(
+            reorder.resolveTabDrop({
+                sourceTabId: 'p1',
+                sourceIndex: 0,
+                currentInsertionIndex: null,
+                targetTabGroupId: null,
+            })
+        ).toBeNull();
+    });
+
     test('a grouped tab released at its own slot stays put', async () => {
         // Strip: [chip][p1][p2][p3]; p2 is released where it started, inside
         // the group: nothing moves and nothing is ejected.
